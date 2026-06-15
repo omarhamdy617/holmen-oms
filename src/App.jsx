@@ -419,8 +419,8 @@ export default function App(){
         <div style={{width:30}}/>
       </div>
       <main style={S.main}>
-        {page==="orders"    &&<OrdersPage user={liveUser} orders={orders} setOrders={setOrders} showToast={showToast} users={users} shipping={shipping} alerts={alerts} dbUpdateOrder={dbUpdateOrder}/>}
-        {page==="new-order" &&hasRole(liveUser,"sales")&&<NewOrderPage user={liveUser} orders={orders} setOrders={setOrders} showToast={showToast} setPage={setPage} products={products} commSettings={commSettings} dbAddOrder={dbAddOrder}/>}
+        {page==="orders"    &&<OrdersPage user={liveUser} orders={orders} setOrders={setOrders} showToast={showToast} users={users} shipping={shipping} alerts={alerts} dbUpdateOrder={dbUpdateOrder} setNotifications={setNotifications} notifications={notifications}/>}
+        {page==="new-order" &&hasRole(liveUser,"sales")&&<NewOrderPage user={liveUser} orders={orders} setOrders={setOrders} showToast={showToast} setPage={setPage} products={products} commSettings={commSettings} dbAddOrder={dbAddOrder} setNotifications={setNotifications}/>}
         {page==="dashboard" &&hasRole(liveUser,"admin")&&<Dashboard orders={orders} users={users} setOrders={setOrders} dbUpdateOrder={dbUpdateOrder}/>}
         {page==="users"     &&hasRole(liveUser,"admin")&&<UsersPage users={users} setUsers={setUsers} currentUser={liveUser} showToast={showToast} dbAddUser={dbAddUser} dbUpdateUser={dbUpdateUser} dbDeleteUser={dbDeleteUser}/>}
         {page==="customers" &&hasRole(liveUser,"admin")&&<CustomersPage orders={orders} users={users} setPage={setPage}/>}
@@ -672,7 +672,7 @@ function UsersPage({users,setUsers,currentUser,showToast,dbAddUser,dbUpdateUser,
   );
 }
 
-function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],dbUpdateOrder}){
+function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],dbUpdateOrder,setNotifications,notifications}){
   const [filter,setFilter]=useState("all");
   const [search,setSearch]=useState("");
   const [govFilter,setGovFilter]=useState("all");
@@ -688,15 +688,7 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
 
   const q=search.trim().toLowerCase();
   const visible=orders.filter(o=>{
-    // Role-based visibility
-    if(!isAdmin){
-      const roles=user.roles||[];
-      let canSee=false;
-      if(roles.includes("sales")&&o.salesId===user.id) canSee=true;
-      if(roles.includes("supervisor")) canSee=true;
-      if(roles.includes("shipping")&&(o.status==="confirmed"||o.status==="shipped")) canSee=true;
-      if(!canSee) return false;
-    }
+    // All users see all orders (permissions control actions, not visibility)
     // Status filter
     if(filter!=="all"&&o.status!==filter)return false;
     // Governorate filter
@@ -824,7 +816,22 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
       ):(
         <div style={S.orderList}>{visible.map(o=><OrderCard key={o.id} order={o} users={users} onSelect={()=>setSelected(o)}/>)}</div>
       )}
-      {selected&&<OrderModal order={selected} user={user} users={users} shipping={shipping} onClose={()=>setSelected(null)} onUpdate={async u=>{await dbUpdateOrder(u);setSelected(u);showToast("تم تحديث الطلب ✅");}}/>}
+      {selected&&<OrderModal order={selected} user={user} users={users} shipping={shipping} onClose={()=>setSelected(null)} onUpdate={async u=>{
+  await dbUpdateOrder(u);
+  setSelected(u);
+  showToast("تم تحديث الطلب ✅");
+  // Push immediate notification to all
+  if(u.status !== selected?.status){
+    setNotifications(prev=>[{
+      id:Date.now(),
+      orderId:u.id,
+      customerName:u.customerName,
+      text:`${user.name} غيّر حالة الأوردر إلى "${STATUS_MAP[u.status]?.label}"`,
+      time:now(),
+      read:false
+    },...prev].slice(0,50));
+  }
+}}/>}
     </div>
   );
 }
@@ -865,7 +872,8 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate}){
   function addNote(){
     if(!noteText.trim())return;
     const note={id:Date.now(),by:user.name,role:user.roles?.[0]||"sales",at:now(),text:noteText.trim()};
-    onUpdate({...order,internalNotes:[...(order.internalNotes||[]),note]});
+    const updated={...order,internalNotes:[...(order.internalNotes||[]),note]};
+    onUpdate(updated);
     setNoteText("");
   }
 
@@ -1081,7 +1089,7 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate}){
   );
 }
 
-function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSettings,dbAddOrder}){
+function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSettings,dbAddOrder,setNotifications}){
   const [customerName,setCustomerName]=useState("");
   const [phone,setPhone]=useState("");
   const [governorate,setGovernorate]=useState("");
@@ -1102,6 +1110,14 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
     if(items.some(i=>!i.price||parseFloat(i.price)<=0)){setErr("في منتج ناقص سعره");return;}
     const order={id:genId(),customerName:customerName.trim(),phone:phone.trim(),governorate,address:address.trim(),notes,items,status:"pending",salesId:user.id,createdAt:today(),commission:0,commPaid:false,commSettings,_createdTs:Date.now(),lastActionAt:Date.now(),auditLog:[{by:user.name,at:now(),action:"تسجيل الطلب",details:""}]};
     await dbAddOrder(order);
+    setNotifications(prev=>[{
+      id:Date.now(),
+      orderId:order.id,
+      customerName:order.customerName,
+      text:`${user.name} سجّل أوردر جديد`,
+      time:now(),
+      read:false
+    },...prev].slice(0,50));
     showToast("تم تسجيل الطلب ✅");setPage("orders");
   }
   const total=calcTotal(items);
