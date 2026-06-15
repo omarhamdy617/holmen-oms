@@ -217,14 +217,37 @@ export default function App(){
     loadAll();
   },[]);
 
-  // ── Auto-sync every 10 seconds — sync across devices
+  // ── Auto-sync every 10 seconds — sync across devices + notifications
   useEffect(()=>{
     if(!currentUser) return;
     const interval = setInterval(async ()=>{
       try{
         const o = await sb("orders?select=*&order=created_at.desc");
         setUsers(prev=>{
-          setOrders(o.map(row=>dbToOrder(row,prev)));
+          const newOrders = o.map(row=>dbToOrder(row,prev));
+          // Detect changes and create notifications
+          setOrders(prevOrders=>{
+            const newNotifs=[];
+            newOrders.forEach(newO=>{
+              const oldO=prevOrders.find(x=>x.id===newO.id);
+              if(!oldO) return; // skip brand new orders in notification
+              // Status changed
+              if(oldO.status!==newO.status){
+                newNotifs.push({id:Date.now()+Math.random(),orderId:newO.id,customerName:newO.customerName,text:`تغيرت حالة الأوردر إلى "${STATUS_MAP[newO.status]?.label}"`,time:now(),read:false});
+              }
+              // New internal note added
+              const oldNotes=(oldO.internalNotes||[]).length;
+              const newNotes=(newO.internalNotes||[]).length;
+              if(newNotes>oldNotes){
+                const lastNote=newO.internalNotes[newNotes-1];
+                if(lastNote?.by!==currentUser?.name){
+                  newNotifs.push({id:Date.now()+Math.random(),orderId:newO.id,customerName:newO.customerName,text:`ملاحظة جديدة من ${lastNote?.by}: "${lastNote?.text?.slice(0,40)}..."`,time:now(),read:false});
+                }
+              }
+            });
+            if(newNotifs.length>0) setNotifications(prev=>[...newNotifs,...prev].slice(0,50));
+            return newOrders;
+          });
           return prev;
         });
       }catch{}
@@ -322,6 +345,9 @@ export default function App(){
   }
 
   const [sidebarOpen,setSidebarOpen]=useState(false);
+  const [notifications,setNotifications]=useState([]);
+  const [notifOpen,setNotifOpen]=useState(false);
+  const prevOrdersRef = useState({})[0];
 
   // Inject responsive CSS
   useEffect(()=>{
@@ -357,7 +383,33 @@ export default function App(){
   const liveUser=users.find(u=>u.id===currentUser.id)||currentUser;
   return(
     <div style={S.app}>
-      <Sidebar user={liveUser} page={page} setPage={p=>{setPage(p);setSidebarOpen(false);}} onLogout={()=>setCurrentUser(null)} alerts={alerts} isOpen={sidebarOpen} onClose={()=>setSidebarOpen(false)}/>
+      <Sidebar user={liveUser} page={page} setPage={p=>{setPage(p);setSidebarOpen(false);}} onLogout={()=>setCurrentUser(null)} alerts={alerts} isOpen={sidebarOpen} onClose={()=>setSidebarOpen(false)} onBell={()=>{setNotifOpen(p=>!p);setNotifications(p=>p.map(n=>({...n,read:true})));}} unreadCount={notifications.filter(n=>!n.read).length}/>
+      {/* Notifications Panel */}
+      {notifOpen&&(
+        <div style={{position:"fixed",top:0,left:220,width:320,height:"100vh",background:"var(--bg,#fff)",boxShadow:"4px 0 20px rgba(0,0,0,.15)",zIndex:98,display:"flex",flexDirection:"column",direction:"rtl",fontFamily:"Cairo,sans-serif"}} className="notif-panel">
+          <div style={{padding:"16px 20px",borderBottom:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div style={{fontSize:15,fontWeight:600,color:"#0f2744"}}>الإشعارات</div>
+            <div style={{display:"flex",gap:8,alignItems:"center"}}>
+              <button onClick={()=>setNotifications([])} style={{fontSize:11,color:"#94a3b8",background:"none",border:"none",cursor:"pointer"}}>مسح الكل</button>
+              <button onClick={()=>setNotifOpen(false)} style={{background:"none",border:"none",fontSize:18,cursor:"pointer",color:"#94a3b8"}}>✕</button>
+            </div>
+          </div>
+          <div style={{flex:1,overflowY:"auto",padding:"8px 0"}}>
+            {notifications.length===0?(
+              <div style={{textAlign:"center",color:"#94a3b8",padding:40,fontSize:13}}>🔔 لا توجد إشعارات</div>
+            ):(
+              notifications.map((n,i)=>(
+                <div key={n.id||i} style={{padding:"12px 20px",borderBottom:"0.5px solid #f8fafc",background:n.read?"transparent":"#f0fdf4"}}>
+                  <div style={{fontSize:12,fontWeight:500,color:"#0f2744",marginBottom:3}}>{n.customerName} — <span style={{fontFamily:"monospace",fontSize:11,color:"#94a3b8"}}>{n.orderId}</span></div>
+                  <div style={{fontSize:12,color:"#64748b",lineHeight:1.5}}>{n.text}</div>
+                  <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>{n.time}</div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+      {notifOpen&&<div onClick={()=>setNotifOpen(false)} style={{position:"fixed",inset:0,zIndex:97}}/>}
       {/* Mobile overlay */}
       {sidebarOpen&&<div onClick={()=>setSidebarOpen(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:98,display:"block"}}/>}
       {/* Mobile top bar */}
@@ -396,7 +448,7 @@ function Login({users,onLogin}){
   );
 }
 
-function Sidebar({user,page,setPage,onLogout,alerts=[],isOpen,onClose}){
+function Sidebar({user,page,setPage,onLogout,alerts=[],isOpen,onClose,onBell,unreadCount=0}){
   const nav=[
     {id:"orders",    label:"الطلبات",          icon:"📋",check:"any",alertCount:true},
     {id:"new-order", label:"طلب جديد",         icon:"➕",check:"sales"},
@@ -418,7 +470,12 @@ function Sidebar({user,page,setPage,onLogout,alerts=[],isOpen,onClose}){
             <span style={{...S.logoMark,fontSize:18,width:36,height:36}}>H</span>
             <span style={{color:"#fff",fontWeight:700,fontSize:16}}>هولمن</span>
           </div>
-          <button onClick={onClose} style={{background:"none",border:"none",color:"#94a3b8",fontSize:20,cursor:"pointer",padding:4}} className="close-sidebar">✕</button>
+          <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <button onClick={onBell} style={{background:"none",border:"none",color:"#94a3b8",fontSize:18,cursor:"pointer",padding:4,position:"relative"}}>
+              🔔{unreadCount>0&&<span style={{position:"absolute",top:-2,right:-2,background:"#ef4444",color:"#fff",borderRadius:"50%",width:16,height:16,fontSize:9,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>{unreadCount>9?"9+":unreadCount}</span>}
+            </button>
+            <button onClick={onClose} style={{background:"none",border:"none",color:"#94a3b8",fontSize:20,cursor:"pointer",padding:4}} className="close-sidebar">✕</button>
+          </div>
         </div>
         <div style={S.userBadge}>
           <div style={{...S.avatar,background:pr?.color||"#475569"}}>{user.name[0]}</div>
@@ -631,11 +688,14 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
 
   const q=search.trim().toLowerCase();
   const visible=orders.filter(o=>{
-    // Role filter
+    // Role-based visibility
     if(!isAdmin){
-      if(hasRole(user,"sales")&&o.salesId!==user.id)return false;
-      if(hasRole(user,"supervisor")&&o.status!=="pending")return false;
-      if(hasRole(user,"shipping")&&o.status!=="confirmed"&&o.status!=="shipped")return false;
+      const roles=user.roles||[];
+      let canSee=false;
+      if(roles.includes("sales")&&o.salesId===user.id) canSee=true;
+      if(roles.includes("supervisor")) canSee=true;
+      if(roles.includes("shipping")&&(o.status==="confirmed"||o.status==="shipped")) canSee=true;
+      if(!canSee) return false;
     }
     // Status filter
     if(filter!=="all"&&o.status!==filter)return false;
