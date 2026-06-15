@@ -217,32 +217,20 @@ export default function App(){
     loadAll();
   },[]);
 
-  // ── Realtime subscription — sync orders across devices
+  // ── Auto-sync every 10 seconds — sync across devices
   useEffect(()=>{
-    const channel = new WebSocket(
-      `${SUPABASE_URL.replace('https','wss')}/realtime/v1/websocket?apikey=${SUPABASE_KEY}&vsn=1.0.0`
-    );
-    let joined = false;
-    channel.onopen = () => {
-      channel.send(JSON.stringify({topic:"realtime:public:orders",event:"phx_join",payload:{},ref:"1"}));
-      joined = true;
-    };
-    channel.onmessage = (e) => {
-      try {
-        const msg = JSON.parse(e.data);
-        if(msg.event === "INSERT" || msg.event === "UPDATE" || msg.event === "DELETE"){
-          // Reload orders from DB
-          sb("orders?select=*&order=created_at.desc").then(rows=>{
-            setUsers(prev => {
-              setOrders(rows.map(row=>dbToOrder(row,prev)));
-              return prev;
-            });
-          }).catch(()=>{});
-        }
-      } catch{}
-    };
-    return () => { try{ channel.close(); }catch{} };
-  },[]);
+    if(!currentUser) return;
+    const interval = setInterval(async ()=>{
+      try{
+        const o = await sb("orders?select=*&order=created_at.desc");
+        setUsers(prev=>{
+          setOrders(o.map(row=>dbToOrder(row,prev)));
+          return prev;
+        });
+      }catch{}
+    }, 10000);
+    return ()=>clearInterval(interval);
+  },[currentUser]);
 
   // ── Alert checker
   useEffect(()=>{
