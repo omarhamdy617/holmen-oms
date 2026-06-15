@@ -198,10 +198,11 @@ export default function App(){
           sb("orders?select=*&order=created_at.desc"),
           sb("settings?select=*"),
         ]);
-        setUsers(u.map(x=>({...x,roles:x.roles||["sales"]})));
-        setShipping(s);
-        setProducts(p.map(x=>x.name));
-        setOrders(o.map(row=>dbToOrder(row,u)));
+        const loadedUsers = u.length > 0 ? u.map(x=>({...x,roles:x.roles||["sales"]})) : INITIAL_USERS;
+        setUsers(loadedUsers);
+        setShipping(s.length > 0 ? s : INITIAL_SHIPPING);
+        setProducts(p.length > 0 ? p.map(x=>x.name) : INITIAL_PRODUCTS);
+        setOrders(o.map(row=>dbToOrder(row,loadedUsers)));
         const cs=sets.find(x=>x.key==="comm_settings");
         const rs=sets.find(x=>x.key==="reminder_settings");
         if(cs)setCommSettings(cs.value);
@@ -214,6 +215,33 @@ export default function App(){
       }
     }
     loadAll();
+  },[]);
+
+  // ── Realtime subscription — sync orders across devices
+  useEffect(()=>{
+    const channel = new WebSocket(
+      `${SUPABASE_URL.replace('https','wss')}/realtime/v1/websocket?apikey=${SUPABASE_KEY}&vsn=1.0.0`
+    );
+    let joined = false;
+    channel.onopen = () => {
+      channel.send(JSON.stringify({topic:"realtime:public:orders",event:"phx_join",payload:{},ref:"1"}));
+      joined = true;
+    };
+    channel.onmessage = (e) => {
+      try {
+        const msg = JSON.parse(e.data);
+        if(msg.event === "INSERT" || msg.event === "UPDATE" || msg.event === "DELETE"){
+          // Reload orders from DB
+          sb("orders?select=*&order=created_at.desc").then(rows=>{
+            setUsers(prev => {
+              setOrders(rows.map(row=>dbToOrder(row,prev)));
+              return prev;
+            });
+          }).catch(()=>{});
+        }
+      } catch{}
+    };
+    return () => { try{ channel.close(); }catch{} };
   },[]);
 
   // ── Alert checker
@@ -375,7 +403,7 @@ function Login({users,onLogin}){
       <input style={S.input} placeholder="الباسورد" type="password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handle()}/>
       {err&&<div style={S.err}>{err}</div>}
       <button style={S.btn} onClick={handle}>دخول</button>
-      <div style={S.loginHint}>admin / admin | ahmed / 1234</div>
+      <div style={{fontSize:12,color:"#94a3b8",textAlign:"center",marginTop:4,lineHeight:1.8}}>💰 كل أوردر بتسجله = عمولة في جيبك<br/>بيع أكتر، اكسب أكتر 🚀</div>
     </div></div>
   );
 }
