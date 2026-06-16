@@ -4,17 +4,6 @@ import { useState, useEffect, useCallback } from "react";
 const SUPABASE_URL = "https://asyoohmjfwcfzrydxykb.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzeW9vaG1qZndjZnpyeWR4eWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyODA2NjAsImV4cCI6MjA5Njg1NjY2MH0.FOAZKbRGaYQpbCsYizpcNRCjfkPFp-WlljTnn2EZ7Qg";
 
-const WOO_SYNC_URL = "https://asyoohmjfwcfzrydxykb.supabase.co/functions/v1/woo-sync";
-
-async function syncFromWoo(){
-  const r = await fetch(WOO_SYNC_URL, {
-    method:"POST",
-    headers:{"Authorization":"Bearer "+SUPABASE_KEY,"Content-Type":"application/json"},
-    body: JSON.stringify({})
-  });
-  return await r.json();
-}
-
 async function sb(path, method="GET", body=null){
   const opts = {
     method,
@@ -732,25 +721,7 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
     <div style={S.pageWrap}>
       <div style={S.pageHeader}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",width:"100%"}}>
           <h1 style={{...S.pageTitle,marginBottom:0}}>الطلبات</h1>
-          <button style={{...S.iconBtn,fontSize:12,color:"#10b981",borderColor:"#bbf7d0",background:"#f0fdf4",display:"flex",alignItems:"center",gap:6,padding:"8px 14px"}}
-            onClick={async()=>{
-              try{
-                showToast("جاري المزامنة مع الموقع...");
-                const res=await syncFromWoo();
-                if(res.error) showToast("خطأ: "+res.error,"error");
-                else{
-                  // Reload orders
-                  const o=await sb("orders?select=*&order=created_at.desc");
-                  setUsers(prev=>{setOrders(o.map(row=>dbToOrder(row,prev)));return prev;});
-                  showToast("تمت المزامنة ✅ — "+res.added+" أوردر جديد من الموقع");
-                }
-              }catch(e){showToast("خطأ في المزامنة","error");}
-            }}>
-            🌐 مزامنة الموقع
-          </button>
-        </div>
           <div style={{fontSize:13,color:visible.length===orders.length?"#94a3b8":"#3b82f6",fontWeight:500}}>{visible.length} من {orders.length}</div>
         </div>
 
