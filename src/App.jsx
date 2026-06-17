@@ -423,7 +423,7 @@ export default function App(){
         {page==="new-order" &&hasRole(liveUser,"sales")&&<NewOrderPage user={liveUser} orders={orders} setOrders={setOrders} showToast={showToast} setPage={setPage} products={products} commSettings={commSettings} dbAddOrder={dbAddOrder} setNotifications={setNotifications}/>}
         {page==="dashboard" &&hasRole(liveUser,"admin")&&<Dashboard orders={orders} users={users} setOrders={setOrders} dbUpdateOrder={dbUpdateOrder}/>}
         {page==="users"     &&hasRole(liveUser,"admin")&&<UsersPage users={users} setUsers={setUsers} currentUser={liveUser} showToast={showToast} dbAddUser={dbAddUser} dbUpdateUser={dbUpdateUser} dbDeleteUser={dbDeleteUser}/>}
-        {page==="customers" &&hasRole(liveUser,"admin")&&<CustomersPage orders={orders} users={users} setPage={setPage}/>}
+        {page==="customers" &&<CustomersPage orders={orders} users={users} setPage={setPage}/> }
         {page==="settings"  &&hasRole(liveUser,"admin")&&<SettingsPage shipping={shipping} setShipping={setShipping} products={products} setProducts={setProducts} commSettings={commSettings} setCommSettings={setCommSettings} reminderSettings={reminderSettings} setReminderSettings={setReminderSettings} showToast={showToast} dbAddShipping={dbAddShipping} dbDeleteShipping={dbDeleteShipping} dbAddProduct={dbAddProduct} dbDeleteProduct={dbDeleteProduct} dbSaveSettings={dbSaveSettings}/>}
       </main>
       {toast&&<div style={{...S.toast,background:toast.type==="success"?"#10b981":"#ef4444"}}>{toast.msg}</div>}
@@ -454,7 +454,7 @@ function Sidebar({user,page,setPage,onLogout,alerts=[],isOpen,onClose,onBell,unr
     {id:"new-order", label:"طلب جديد",         icon:"➕",check:"sales"},
     {id:"dashboard", label:"لوحة التحكم",      icon:"📊",check:"admin"},
     {id:"users",     label:"المستخدمين",        icon:"👥",check:"admin"},
-    {id:"customers", label:"العملاء",            icon:"👥",check:"admin"},
+    {id:"customers", label:"العملاء",            icon:"👥",check:"any"},
     {id:"settings",  label:"الإعدادات",         icon:"⚙️",check:"admin"},
   ].filter(n=>n.check==="any"||hasRole(user,n.check));
   const pr=ALL_ROLES.find(r=>user.roles?.includes(r.value));
