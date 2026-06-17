@@ -674,6 +674,7 @@ function UsersPage({users,setUsers,currentUser,showToast,dbAddUser,dbUpdateUser,
 
 function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],dbUpdateOrder,setNotifications,notifications}){
   const [filter,setFilter]=useState("all");
+  const [myOrders,setMyOrders]=useState(false);
   const [search,setSearch]=useState("");
   const [govFilter,setGovFilter]=useState("all");
   const [salesFilter,setSalesFilter]=useState("all");
@@ -689,6 +690,8 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
   const q=search.trim().toLowerCase();
   const visible=orders.filter(o=>{
     // All users see all orders (permissions control actions, not visibility)
+    // My orders filter
+    if(myOrders&&o.salesId!==user.id)return false;
     // Status filter
     if(filter!=="all"&&o.status!==filter)return false;
     // Governorate filter
@@ -1108,7 +1111,8 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
     if(!address.trim()){setErr("من فضلك اكتب العنوان التفصيلي");return;}
     if(items.some(i=>!i.name?.trim())){setErr("في منتج ناقص اسمه");return;}
     if(items.some(i=>!i.price||parseFloat(i.price)<=0)){setErr("في منتج ناقص سعره");return;}
-    const order={id:genId(),customerName:customerName.trim(),phone:phone.trim(),governorate,address:address.trim(),notes,items,status:"pending",salesId:user.id,createdAt:today(),commission:0,commPaid:false,commSettings,_createdTs:Date.now(),lastActionAt:Date.now(),auditLog:[{by:user.name,at:now(),action:"تسجيل الطلب",details:""}]};
+    const orderTime = today()+" "+new Date().toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});
+    const order={id:genId(),customerName:customerName.trim(),phone:phone.trim(),governorate,address:address.trim(),notes,items,status:"pending",salesId:user.id,createdAt:orderTime,commission:0,commPaid:false,commSettings,_createdTs:Date.now(),lastActionAt:Date.now(),auditLog:[{by:user.name,at:now(),action:"تسجيل الطلب",details:""}]};
     await dbAddOrder(order);
     setNotifications(prev=>[{
       id:Date.now(),
