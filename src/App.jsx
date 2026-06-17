@@ -739,6 +739,12 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
           {search&&<button onClick={()=>setSearch("")} style={{position:"absolute",left:10,top:"50%",transform:"translateY(-50%)",background:"none",border:"none",fontSize:16,cursor:"pointer",color:"#94a3b8"}}>✕</button>}
         </div>
 
+        {/* My orders toggle */}
+        <div style={{display:"flex",gap:8,marginBottom:10}}>
+          <button style={{...S.filterBtn,...(myOrders?{background:"#0f2744",color:"#fff",borderColor:"#0f2744"}:{})}} onClick={()=>setMyOrders(p=>!p)}>
+            👤 {myOrders?"طلباتي فقط ✓":"طلباتي فقط"}
+          </button>
+        </div>
         {/* Status pills */}
         <div style={{...S.filterRow,marginBottom:10}}>
           {["all","pending","confirmed","shipped","delivered","rejected"].map(f=>(
