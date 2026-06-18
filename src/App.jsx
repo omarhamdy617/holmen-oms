@@ -987,7 +987,7 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate}){
               <ActionBox title="تسجيل نتيجة التسليم">
                 <div style={{background:"#f8fafc",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#64748b",marginBottom:10}}>شُحن مع: <strong>{order.shippingCompany}</strong></div>
                 <div style={{display:"flex",gap:8,marginBottom:8}}>
-                  <button style={{...S.actionBtn,flex:1}} onClick={()=>auditUpdate({...order,status:"delivered",deliveredAt:today(),commission:order.orderType==="delivery"||!order.orderType?calcComm(calcTotal(order.items),order.commSettings):0},"تسجيل الاستلام")}>✅ تم الاستلام</button>
+                  <button style={{...S.actionBtn,flex:1}} onClick={()=>auditUpdate({...order,status:"delivered",deliveredAt:today(),commission:order.orderType==="delivery"||!order.orderType?calcComm(calcTotal(order.items),order.commSettings&&order.commSettings.value>0?order.commSettings:commSettings):0},"تسجيل الاستلام")}>✅ تم الاستلام</button>
                   <button style={{...S.actionBtn,flex:1,background:"#fee2e2",color:"#ef4444",borderColor:"#fecaca"}} onClick={()=>setShowReject(r=>!r)}>❌ مرتجع</button>
                 </div>
                 {showReject&&(
