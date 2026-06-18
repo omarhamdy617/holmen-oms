@@ -1430,6 +1430,7 @@ function CustomersPage({orders,users,setPage}){
   );
 }
 
+
 function Dashboard({orders,users,setOrders,dbUpdateOrder}){
   const [activeTab,setActiveTab]=useState("overview");
   const [selectedSales,setSelectedSales]=useState("all");
@@ -1533,6 +1534,81 @@ function Row({label,value,tag,sub}){return <div style={S.row}><span style={S.row
 function Field({label,children}){return <div style={{marginBottom:12}}><div style={S.subLabel}>{label}</div>{children}</div>;}
 function ActionBox({title,children}){return <div style={S.actionBox}><div style={S.sectionTitle}>{title}</div>{children}</div>;}
 function Metric({label,value,icon,color="#374151"}){return <div style={S.metricCard}><div style={S.metricIcon}>{icon}</div><div style={{...S.metricVal,color}}>{value}</div><div style={S.metricLabel}>{label}</div></div>;}
+
+function PerformancePage({orders,users}){
+  const salesUsers=users.filter(u=>u.roles?.includes("sales"));
+  const nowTs=Date.now(), day=86400000;
+  function uStats(u){
+    const my=orders.filter(o=>o.salesId===u.id);
+    const del=my.filter(o=>o.status==="delivered");
+    const rej=my.filter(o=>o.status==="rejected");
+    const pen=my.filter(o=>o.status==="pending");
+    const revenue=del.reduce((s,o)=>s+calcTotal(o.items),0);
+    const commission=del.reduce((s,o)=>s+o.commission,0);
+    const dRate=my.length>0?Math.round((del.length/my.length)*100):0;
+    const recent=my.filter(o=>o._createdTs&&(nowTs-o._createdTs)<7*day).length;
+    const last30=my.filter(o=>o._createdTs&&(nowTs-o._createdTs)<30*day).length;
+    const score=Math.min(100,Math.round(dRate*0.5+Math.min(recent*10,30)+Math.min(del.length*2,20)));
+    return{u,total:my.length,del:del.length,rej:rej.length,pen:pen.length,revenue,commission,dRate,recent,avg:(last30/30).toFixed(1),score};
+  }
+  const stats=salesUsers.map(uStats).sort((a,b)=>b.score-a.score);
+  const sc=s=>s>=80?"#10b981":s>=60?"#f59e0b":"#ef4444";
+  const sl=s=>s>=80?"ممتاز 🌟":s>=60?"جيد 👍":s>=40?"متوسط ⚠️":"يحتاج تحسين 🔴";
+  const totDel=orders.filter(o=>o.status==="delivered").length;
+  const totRev=orders.filter(o=>o.status==="delivered").reduce((s,o)=>s+calcTotal(o.items),0);
+  const teamRate=orders.length>0?Math.round((totDel/orders.length)*100):0;
+  return(
+    <div style={S.pageWrap}>
+      <div style={S.pageHeader}><h1 style={S.pageTitle}>🏆 أداء الفريق</h1></div>
+      <div style={S.metricsRow}>
+        <Metric label="الفريق" value={salesUsers.length+" موظف"} icon="👥"/>
+        <Metric label="إجمالي الطلبات" value={orders.length} icon="📋"/>
+        <Metric label="مُسلَّم" value={totDel} icon="✅" color="#10b981"/>
+        <Metric label="معدل التسليم" value={teamRate+"%"} icon="📊" color={teamRate>=70?"#10b981":"#f59e0b"}/>
+        <Metric label="إجمالي الإيرادات" value={totRev.toLocaleString()+" ج.م"} icon="💰" color="#3b82f6"/>
+      </div>
+      <div style={{display:"flex",flexDirection:"column",gap:14}}>
+        {stats.length===0?<div style={S.empty}>لا يوجد موظفو مبيعات</div>:stats.map((s,rank)=>(
+          <div key={s.u.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+            <div style={{padding:"14px 20px",display:"flex",alignItems:"center",gap:14,borderBottom:"1px solid #f1f5f9"}}>
+              <div style={{width:38,height:38,borderRadius:"50%",background:sc(s.score),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700,flexShrink:0}}>
+                {rank===0?"🥇":rank===1?"🥈":rank===2?"🥉":rank+1}
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:15,fontWeight:600,color:"#0f2744"}}>{s.u.name}</div>
+                <div style={{fontSize:12,color:"#64748b"}}>آخر ٧ أيام: {s.recent} طلب | متوسط يومي: {s.avg}</div>
+              </div>
+              <div style={{textAlign:"center",minWidth:60}}>
+                <div style={{fontSize:24,fontWeight:800,color:sc(s.score)}}>{s.score}</div>
+                <div style={{fontSize:11,color:sc(s.score),fontWeight:500}}>{sl(s.score)}</div>
+              </div>
+            </div>
+            <div style={{height:4,background:"#f1f5f9"}}>
+              <div style={{height:4,width:s.score+"%",background:sc(s.score)}}/>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(90px,1fr))"}}>
+              {[
+                {l:"الطلبات",v:s.total,i:"📋",c:"#0f2744"},
+                {l:"مُسلَّم",v:s.del,i:"✅",c:"#10b981"},
+                {l:"مرتجع",v:s.rej,i:"↩️",c:"#ef4444"},
+                {l:"معلق",v:s.pen,i:"⏳",c:"#f59e0b"},
+                {l:"معدل التسليم",v:s.dRate+"%",i:"📊",c:s.dRate>=70?"#10b981":"#f59e0b"},
+                {l:"الإيرادات",v:s.revenue.toLocaleString()+" ج.م",i:"💰",c:"#3b82f6"},
+                {l:"العمولات",v:Math.round(s.commission).toLocaleString()+" ج.م",i:"🏆",c:"#8b5cf6"},
+              ].map((item,i)=>(
+                <div key={i} style={{padding:"12px 10px",textAlign:"center",borderRight:i<6?"0.5px solid #f1f5f9":"none"}}>
+                  <div style={{fontSize:10,color:"#94a3b8",marginBottom:3}}>{item.i} {item.l}</div>
+                  <div style={{fontSize:12,fontWeight:600,color:item.c}}>{item.v}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 
 const S={
   app:{display:"block",minHeight:"100vh",fontFamily:"'Cairo',sans-serif",direction:"rtl",background:"#f8fafc"},
