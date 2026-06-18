@@ -852,7 +852,10 @@ function OrderCard({order,users,onSelect}){
     <div style={S.orderCard} onClick={onSelect}>
       <div style={S.orderCardTop}><span style={S.orderId}>{order.id}</span><span style={{...S.statusBadge,color:st.color,background:st.bg}}>{st.label}</span></div>
       <div style={S.orderCustomer}>{order.customerName}</div>
-      {order.governorate&&<div style={{fontSize:11,color:"#3b82f6",marginTop:2}}>📍 {order.governorate}</div>}
+      <div style={{display:"flex",gap:6,alignItems:"center",marginBottom:4}}>
+        {order.governorate&&<span style={{fontSize:11,color:"#3b82f6"}}>📍 {order.governorate}</span>}
+        {order.orderType&&order.orderType!=="delivery"&&<span style={{fontSize:10,padding:"2px 7px",borderRadius:10,fontWeight:600,color:order.orderType==="return"?"#ef4444":"#f59e0b",background:order.orderType==="return"?"#fee2e2":"#fef3c7"}}>{order.orderType==="return"?"↩️ مرتجع":"🔄 تبديل"}</span>}
+      </div>
       <div style={S.orderMeta}><span>📦 {order.items?.length||0} منتج</span><span>💰 {calcTotal(order.items).toLocaleString()} ج.م</span></div>
       <div style={S.orderMeta}><span>👤 {su?.name||"—"}</span><span style={{color:"#94a3b8",fontSize:11}}>{order.createdAt}</span></div>
       {order.internalNotes?.length>0&&<div style={{fontSize:11,color:"#64748b",marginTop:4}}>💬 {order.internalNotes.length} ملاحظة داخلية</div>}
@@ -977,7 +980,7 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate}){
               <ActionBox title="تسجيل نتيجة التسليم">
                 <div style={{background:"#f8fafc",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#64748b",marginBottom:10}}>شُحن مع: <strong>{order.shippingCompany}</strong></div>
                 <div style={{display:"flex",gap:8,marginBottom:8}}>
-                  <button style={{...S.actionBtn,flex:1}} onClick={()=>auditUpdate({...order,status:"delivered",deliveredAt:today(),commission:calcComm(calcTotal(order.items),order.commSettings)},"تسجيل الاستلام")}>✅ تم الاستلام</button>
+                  <button style={{...S.actionBtn,flex:1}} onClick={()=>auditUpdate({...order,status:"delivered",deliveredAt:today(),commission:order.orderType==="delivery"||!order.orderType?calcComm(calcTotal(order.items),order.commSettings):0},"تسجيل الاستلام")}>✅ تم الاستلام</button>
                   <button style={{...S.actionBtn,flex:1,background:"#fee2e2",color:"#ef4444",borderColor:"#fecaca"}} onClick={()=>setShowReject(r=>!r)}>❌ مرتجع</button>
                 </div>
                 {showReject&&(
@@ -1086,6 +1089,13 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate}){
                 </div>
               </Section>
               <Section title="التحكم الإداري">
+                <Field label="نوع الطلب">
+                  <select style={S.input} value={editForm.orderType||"delivery"} onChange={e=>setEF("orderType",e.target.value)}>
+                    <option value="delivery">📦 تسليم</option>
+                    <option value="return">↩️ مرتجع</option>
+                    <option value="exchange">🔄 تبديل</option>
+                  </select>
+                </Field>
                 <Field label="نقل العمولة إلى"><select style={S.input} value={editForm.salesId} onChange={e=>setEF("salesId",parseInt(e.target.value))}>{salesUsers.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===order.salesId?" (الحالي)":""}</option>)}</select></Field>
                 <Field label="تغيير حالة الأوردر"><select style={S.input} value={editForm.status} onChange={e=>setEF("status",e.target.value)}>{Object.entries(STATUS_MAP).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}</select></Field>
               </Section>
@@ -1104,6 +1114,7 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
   const [governorate,setGovernorate]=useState("");
   const [address,setAddress]=useState("");
   const [notes,setNotes]=useState("");
+  const [orderType,setOrderType]=useState("delivery"); // delivery | return | exchange
   const [items,setItems]=useState([{name:"",qty:1,price:""}]);
   const [err,setErr]=useState("");
   function updateItem(i,k,v){const n=[...items];n[i]={...n[i],[k]:v};setItems(n);}
@@ -1118,7 +1129,7 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
     if(items.some(i=>!i.name?.trim())){setErr("في منتج ناقص اسمه");return;}
     if(items.some(i=>!i.price||parseFloat(i.price)<=0)){setErr("في منتج ناقص سعره");return;}
     const orderTime = today()+" "+new Date().toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});
-    const order={id:genId(),customerName:customerName.trim(),phone:phone.trim(),governorate,address:address.trim(),notes,items,status:"pending",salesId:user.id,createdAt:orderTime,commission:0,commPaid:false,commSettings,_createdTs:Date.now(),lastActionAt:Date.now(),auditLog:[{by:user.name,at:now(),action:"تسجيل الطلب",details:""}]};
+    const order={id:genId(),customerName:customerName.trim(),phone:phone.trim(),governorate,address:address.trim(),notes,items,status:"pending",orderType,salesId:user.id,createdAt:orderTime,commission:0,commPaid:false,commSettings,_createdTs:Date.now(),lastActionAt:Date.now(),auditLog:[{by:user.name,at:now(),action:"تسجيل الطلب",details:"نوع الطلب: "+(orderType==="delivery"?"تسليم":orderType==="return"?"مرتجع":"تبديل")}]};
     await dbAddOrder(order);
     setNotifications(prev=>[{
       id:Date.now(),
@@ -1153,6 +1164,17 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
           </Field>
           <Field label="العنوان التفصيلي *"><input style={S.input} value={address} onChange={e=>setAddress(e.target.value)} placeholder="الشارع، الحي..."/></Field>
         </div>
+        <Field label="نوع الطلب">
+          <div style={{display:"flex",gap:8}}>
+            {[{v:"delivery",l:"📦 تسليم",c:"#10b981",bg:"#d1fae5"},{v:"return",l:"↩️ مرتجع",c:"#ef4444",bg:"#fee2e2"},{v:"exchange",l:"🔄 تبديل",c:"#f59e0b",bg:"#fef3c7"}].map(t=>(
+              <button key={t.v} type="button"
+                style={{flex:1,padding:"10px 8px",borderRadius:8,border:"2px solid "+(orderType===t.v?t.c:"#e2e8f0"),background:orderType===t.v?t.bg:"#fff",color:orderType===t.v?t.c:"#64748b",fontSize:13,fontWeight:orderType===t.v?600:400,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}
+                onClick={()=>setOrderType(t.v)}>
+                {t.l}
+              </button>
+            ))}
+          </div>
+        </Field>
         <Field label="ملاحظات"><input style={S.input} value={notes} onChange={e=>setNotes(e.target.value)}/></Field>
         <div style={{borderTop:"1px solid #f1f5f9",paddingTop:16,marginTop:4}}>
           <div style={{...S.dashCardTitle,marginBottom:12}}>📦 المنتجات</div>
