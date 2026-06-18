@@ -1115,6 +1115,26 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
   const [address,setAddress]=useState("");
   const [notes,setNotes]=useState("");
   const [orderType,setOrderType]=useState("delivery"); // delivery | return | exchange
+  const [existingCustomer,setExistingCustomer]=useState(null);
+
+  function lookupCustomer(phoneVal){
+    const digits = phoneVal.replace(/\D/g,"");
+    if(digits.length < 8){ setExistingCustomer(null); return; }
+    // Search in existing orders
+    const customerOrders = orders.filter(o=>o.phone?.replace(/\D/g,"")===digits);
+    if(customerOrders.length===0){ setExistingCustomer(null); return; }
+    const delivered = customerOrders.filter(o=>o.status==="delivered").length;
+    const returned  = customerOrders.filter(o=>o.status==="rejected").length;
+    const lastOrder = customerOrders[0];
+    setExistingCustomer({
+      name: lastOrder.customerName,
+      governorate: lastOrder.governorate||"",
+      address: lastOrder.address||"",
+      total: customerOrders.length,
+      delivered,
+      returned,
+    });
+  }
   const [items,setItems]=useState([{name:"",qty:1,price:""}]);
   const [err,setErr]=useState("");
   function updateItem(i,k,v){const n=[...items];n[i]={...n[i],[k]:v};setItems(n);}
@@ -1150,9 +1170,35 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
         <div style={S.formGrid}>
           <Field label="اسم العميل *"><input style={S.input} value={customerName} onChange={e=>setCustomerName(e.target.value)}/></Field>
           <Field label="رقم التليفون * (11 رقم)">
-            <input style={{...S.input,borderColor:phone&&phone.replace(/\D/g,"").length!==11&&phone.length>0?"#ef4444":"#e2e8f0"}} value={phone} onChange={e=>setPhone(e.target.value)} placeholder="01012345678" maxLength={14}/>
+            <input style={{...S.input,borderColor:phone&&phone.replace(/\D/g,"").length!==11&&phone.length>0?"#ef4444":"#e2e8f0"}}
+              value={phone}
+              onChange={e=>{setPhone(e.target.value);lookupCustomer(e.target.value);}}
+              placeholder="01012345678" maxLength={14}/>
             {phone&&phone.replace(/\D/g,"").length!==11&&phone.length>0&&<div style={{fontSize:11,color:"#ef4444",marginTop:3}}>{phone.replace(/\D/g,"").length<11?"ناقص "+(11-phone.replace(/\D/g,"").length)+" أرقام":"زيادة "+(phone.replace(/\D/g,"").length-11)+" أرقام"}</div>}
             {phone&&phone.replace(/\D/g,"").length===11&&<div style={{fontSize:11,color:"#10b981",marginTop:3}}>✓ الرقم صح</div>}
+            {existingCustomer&&(
+              <div style={{marginTop:8,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"10px 12px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                  <div>
+                    <div style={{fontSize:12,color:"#3b82f6",fontWeight:600,marginBottom:4}}>✅ عميل موجود — {existingCustomer.name}</div>
+                    <div style={{fontSize:12,color:"#64748b"}}>
+                      📦 {existingCustomer.total} طلب سابق &nbsp;|&nbsp;
+                      <span style={{color:"#10b981"}}>✅ {existingCustomer.delivered} مُسلَّم</span>
+                      {existingCustomer.returned>0&&<span style={{color:"#ef4444"}}> &nbsp;|&nbsp; ↩️ {existingCustomer.returned} مرتجع</span>}
+                    </div>
+                  </div>
+                  <button type="button"
+                    style={{fontSize:11,padding:"5px 10px",background:"#3b82f6",color:"#fff",border:"none",borderRadius:6,cursor:"pointer",fontFamily:"inherit",flexShrink:0,marginRight:8}}
+                    onClick={()=>{
+                      setCustomerName(existingCustomer.name);
+                      if(existingCustomer.governorate)setGovernorate(existingCustomer.governorate);
+                      if(existingCustomer.address)setAddress(existingCustomer.address);
+                    }}>
+                    تعبئة تلقائية ↗
+                  </button>
+                </div>
+              </div>
+            )}
           </Field>
         </div>
         <div style={S.formGrid}>
