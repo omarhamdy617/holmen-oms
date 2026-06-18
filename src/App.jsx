@@ -17,6 +17,8 @@ async function sb(path, method="GET", body=null){
   if(body) opts.body = JSON.stringify(body);
   const r = await fetch(SUPABASE_URL + "/rest/v1/" + path, opts);
   if(!r.ok){ const t=await r.text(); throw new Error(t); }
+  if(!r.ok){ const t=await r.text(); throw new Error(t); }
+  if(r.status===204||method==="DELETE"){ return []; }
   const txt = await r.text();
   return txt ? JSON.parse(txt) : [];
 }
@@ -285,21 +287,12 @@ export default function App(){
 
   async function dbDeleteOrder(orderId){
     try{
-      const res = await fetch(SUPABASE_URL+"/rest/v1/orders?id=eq."+orderId, {
-        method:"DELETE",
-        headers:{
-          "apikey":SUPABASE_KEY,
-          "Authorization":"Bearer "+SUPABASE_KEY,
-          "Prefer":"return=minimal"
-        }
-      });
-      if(res.ok){
-        setOrders(p=>p.filter(o=>o.id!==orderId));
-      } else {
-        const err = await res.text();
-        showToast("خطأ: "+err,"error");
-      }
-    }catch(e){ showToast("خطأ في المسح: "+e.message,"error"); }
+      await sb("orders?id=eq."+orderId,"DELETE");
+      setOrders(p=>p.filter(o=>o.id!==orderId));
+      showToast("تم مسح الأوردر ✅");
+    }catch(e){
+      showToast("خطأ في المسح: "+e.message,"error");
+    }
   }
 
   async function dbUpdateOrder(order){
