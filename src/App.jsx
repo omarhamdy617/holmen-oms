@@ -11,7 +11,7 @@ async function sb(path, method="GET", body=null){
       "Content-Type": "application/json",
       "apikey": SUPABASE_KEY,
       "Authorization": "Bearer " + SUPABASE_KEY,
-      "Prefer": method==="POST" ? "return=representation" : method==="PATCH"||method==="DELETE" ? "return=representation" : "",
+      "Prefer": method==="POST" ? "return=representation" : method==="PATCH" ? "return=representation" : method==="DELETE" ? "return=minimal" : "",
     }
   };
   if(body) opts.body = JSON.stringify(body);
@@ -285,8 +285,20 @@ export default function App(){
 
   async function dbDeleteOrder(orderId){
     try{
-      await sb("orders?id=eq."+orderId,"DELETE");
-      setOrders(p=>p.filter(o=>o.id!==orderId));
+      const res = await fetch(SUPABASE_URL+"/rest/v1/orders?id=eq."+orderId, {
+        method:"DELETE",
+        headers:{
+          "apikey":SUPABASE_KEY,
+          "Authorization":"Bearer "+SUPABASE_KEY,
+          "Prefer":"return=minimal"
+        }
+      });
+      if(res.ok){
+        setOrders(p=>p.filter(o=>o.id!==orderId));
+      } else {
+        const err = await res.text();
+        showToast("خطأ: "+err,"error");
+      }
     }catch(e){ showToast("خطأ في المسح: "+e.message,"error"); }
   }
 
