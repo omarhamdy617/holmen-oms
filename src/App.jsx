@@ -944,11 +944,9 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate,dbDeleteOrder}){
               <button style={{...S.tabBtn,...(tab==="notes"?S.tabBtnActive:{})}} onClick={()=>setTab("notes")}>💬 ملاحظات{order.internalNotes?.length>0&&<span style={{background:"#ef4444",color:"#fff",borderRadius:10,padding:"1px 5px",fontSize:9,marginRight:3}}>{order.internalNotes.length}</span>}</button>
               {isAdmin&&<button style={{...S.tabBtn,...(tab==="edit"?S.tabBtnActive:{})}} onClick={()=>setTab("edit")}>✏️ تعديل</button>}
               {isAdmin&&<button style={{...S.tabBtn,...(tab==="audit"?S.tabBtnActive:{})}} onClick={()=>setTab("audit")}>🕐 سجل</button>}
+            {isAdmin&&dbDeleteOrder&&<button onClick={async()=>{if(window.confirm("هتمسح الأوردر "+order.id+" نهائياً؟")){await dbDeleteOrder(order.id);onClose();}}} style={{...S.tabBtn,color:"#ef4444",borderColor:"#fecaca",background:"#fff5f5"}}>🗑️ مسح</button>}
             </div>
-            <div style={{display:"flex",gap:6,alignItems:"center"}}>
-              {hasRole(user,"admin")&&dbDeleteOrder&&<button onClick={async()=>{if(window.confirm("هتمسح الأوردر "+order.id+" نهائياً؟")){await dbDeleteOrder(order.id);onClose();}}} style={{background:"none",border:"none",color:"#ef4444",fontSize:14,cursor:"pointer",padding:"2px 4px",opacity:0.6,lineHeight:1}} title="مسح الأوردر">🗑️</button>}
-              <button style={S.closeBtn} onClick={onClose}>✕</button>
-            </div>
+            <button style={S.closeBtn} onClick={onClose}>✕</button>
           </div>
         </div>
         <div style={S.modalBody}>
