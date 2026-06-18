@@ -283,6 +283,13 @@ export default function App(){
     }catch(e){ showToast("خطأ في حفظ الطلب: "+e.message,"error"); }
   }
 
+  async function dbDeleteOrder(orderId){
+    try{
+      await sb("orders?id=eq."+orderId,"DELETE");
+      setOrders(p=>p.filter(o=>o.id!==orderId));
+    }catch(e){ showToast("خطأ في المسح: "+e.message,"error"); }
+  }
+
   async function dbUpdateOrder(order){
     try{
       await sb("orders?id=eq."+order.id,"PATCH",orderToDb(order));
@@ -421,7 +428,7 @@ export default function App(){
       <main style={S.main}>
         {page==="orders"    &&<OrdersPage user={liveUser} orders={orders} setOrders={setOrders} showToast={showToast} users={users} shipping={shipping} alerts={alerts} dbUpdateOrder={dbUpdateOrder} setNotifications={setNotifications} notifications={notifications}/>}
         {page==="new-order" &&hasRole(liveUser,"sales")&&<NewOrderPage user={liveUser} orders={orders} setOrders={setOrders} showToast={showToast} setPage={setPage} products={products} commSettings={commSettings} dbAddOrder={dbAddOrder} setNotifications={setNotifications}/>}
-        {page==="dashboard" &&hasRole(liveUser,"admin")&&<Dashboard orders={orders} users={users} setOrders={setOrders} dbUpdateOrder={dbUpdateOrder}/>}
+        {page==="dashboard" &&hasRole(liveUser,"admin")&&<Dashboard orders={orders} users={users} setOrders={setOrders} dbUpdateOrder={dbUpdateOrder} dbDeleteOrder={dbDeleteOrder}/>}
         {page==="users"     &&hasRole(liveUser,"admin")&&<UsersPage users={users} setUsers={setUsers} currentUser={liveUser} showToast={showToast} dbAddUser={dbAddUser} dbUpdateUser={dbUpdateUser} dbDeleteUser={dbDeleteUser}/>}
         {page==="customers" &&<CustomersPage orders={orders} users={users} setPage={setPage}/> }
         {page==="performance"&&hasRole(liveUser,"admin")&&<PerformancePage orders={orders} users={users}/> }
@@ -676,7 +683,7 @@ function UsersPage({users,setUsers,currentUser,showToast,dbAddUser,dbUpdateUser,
   );
 }
 
-function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],dbUpdateOrder,setNotifications,notifications}){
+function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],dbUpdateOrder,setNotifications,notifications,dbDeleteOrder}){
   const [filter,setFilter]=useState("all");
   const [myOrders,setMyOrders]=useState(false);
   const [search,setSearch]=useState("");
@@ -829,7 +836,7 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
       ):(
         <div style={S.orderList}>{visible.map(o=><OrderCard key={o.id} order={o} users={users} onSelect={()=>setSelected(o)}/>)}</div>
       )}
-      {selected&&<OrderModal order={selected} user={user} users={users} shipping={shipping} onClose={()=>setSelected(null)} onUpdate={async u=>{
+      {selected&&<OrderModal order={selected} user={user} users={users} shipping={shipping} onClose={()=>setSelected(null)} dbDeleteOrder={async(id)=>{if(window.confirm("هتمسح الأوردر ده نهائياً؟")){await dbDeleteOrder(id);setSelected(null);showToast("تم مسح الأوردر");}}} onUpdate={async u=>{
   await dbUpdateOrder(u);
   setSelected(u);
   showToast("تم تحديث الطلب ✅");
@@ -871,7 +878,7 @@ function OrderCard({order,users,onSelect}){
   );
 }
 
-function OrderModal({order,user,users,shipping,onClose,onUpdate}){
+function OrderModal({order,user,users,shipping,onClose,onUpdate,dbDeleteOrder}){
   const isAdmin=hasRole(user,"admin");
   const [tab,setTab]=useState("action");
   const [shippingCompany,setShippingCompany]=useState(order.shippingCompany||"");
@@ -933,7 +940,10 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate}){
               {isAdmin&&<button style={{...S.tabBtn,...(tab==="edit"?S.tabBtnActive:{})}} onClick={()=>setTab("edit")}>✏️ تعديل</button>}
               {isAdmin&&<button style={{...S.tabBtn,...(tab==="audit"?S.tabBtnActive:{})}} onClick={()=>setTab("audit")}>🕐 سجل</button>}
             </div>
-            <button style={S.closeBtn} onClick={onClose}>✕</button>
+            <div style={{display:"flex",gap:6,alignItems:"center"}}>
+              {hasRole(user,"admin")&&dbDeleteOrder&&<button onClick={()=>dbDeleteOrder(order.id)} style={{background:"#fee2e2",border:"1px solid #fecaca",borderRadius:6,color:"#ef4444",fontSize:12,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>🗑️ مسح</button>}
+              <button style={S.closeBtn} onClick={onClose}>✕</button>
+            </div>
           </div>
         </div>
         <div style={S.modalBody}>
