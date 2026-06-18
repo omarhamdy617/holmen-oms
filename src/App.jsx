@@ -425,6 +425,7 @@ export default function App(){
         {page==="users"     &&hasRole(liveUser,"admin")&&<UsersPage users={users} setUsers={setUsers} currentUser={liveUser} showToast={showToast} dbAddUser={dbAddUser} dbUpdateUser={dbUpdateUser} dbDeleteUser={dbDeleteUser}/>}
         {page==="customers" &&<CustomersPage orders={orders} users={users} setPage={setPage}/> }
         {page==="performance"&&hasRole(liveUser,"admin")&&<PerformancePage orders={orders} users={users}/> }
+        {page==="analytics"   &&hasRole(liveUser,"admin")&&<AnalyticsPage orders={orders}/> }
         {page==="settings"  &&hasRole(liveUser,"admin")&&<SettingsPage shipping={shipping} setShipping={setShipping} products={products} setProducts={setProducts} commSettings={commSettings} setCommSettings={setCommSettings} reminderSettings={reminderSettings} setReminderSettings={setReminderSettings} showToast={showToast} dbAddShipping={dbAddShipping} dbDeleteShipping={dbDeleteShipping} dbAddProduct={dbAddProduct} dbDeleteProduct={dbDeleteProduct} dbSaveSettings={dbSaveSettings}/>}
       </main>
       {toast&&<div style={{...S.toast,background:toast.type==="success"?"#10b981":"#ef4444"}}>{toast.msg}</div>}
@@ -457,6 +458,7 @@ function Sidebar({user,page,setPage,onLogout,alerts=[],isOpen,onClose,onBell,unr
     {id:"users",     label:"المستخدمين",        icon:"👥",check:"admin"},
     {id:"customers", label:"العملاء",            icon:"👥",check:"any"},
     {id:"performance",label:"أداء الفريق",      icon:"🏆",check:"admin"},
+    {id:"analytics",   label:"تحليلات",            icon:"📈",check:"admin"},
     {id:"settings",  label:"الإعدادات",         icon:"⚙️",check:"admin"},
   ].filter(n=>n.check==="any"||hasRole(user,n.check));
   const pr=ALL_ROLES.find(r=>user.roles?.includes(r.value));
@@ -859,6 +861,9 @@ function OrderCard({order,users,onSelect}){
         {order.orderType&&order.orderType!=="delivery"&&<span style={{fontSize:10,padding:"2px 7px",borderRadius:10,fontWeight:600,color:order.orderType==="return"?"#ef4444":"#f59e0b",background:order.orderType==="return"?"#fee2e2":"#fef3c7"}}>{order.orderType==="return"?"↩️ مرتجع":"🔄 تبديل"}</span>}
       </div>
       <div style={S.orderMeta}><span>📦 {order.items?.length||0} منتج</span><span>💰 {calcTotal(order.items).toLocaleString()} ج.م</span></div>
+      {order.source&&order.source!=="phone"&&<div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>
+        {order.source==="whatsapp"?"💬 واتساب":order.source==="facebook"?"📘 فيسبوك":order.source==="instagram"?"📸 انستجرام":order.source==="tiktok"?"🎵 تيكتوك":order.source==="website"?"🌐 الموقع":"📞 مكالمة"}
+      </div>}
       <div style={S.orderMeta}><span>👤 {su?.name||"—"}</span><span style={{color:"#94a3b8",fontSize:11}}>{order.createdAt}</span></div>
       {order.internalNotes?.length>0&&<div style={{fontSize:11,color:"#64748b",marginTop:4}}>💬 {order.internalNotes.length} ملاحظة داخلية</div>}
       <button style={{...S.waBtn,marginTop:8}} onClick={e=>{e.stopPropagation();printInvoice(order,users);}}>🖨️ فاتورة PDF</button>
@@ -1116,7 +1121,8 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
   const [governorate,setGovernorate]=useState("");
   const [address,setAddress]=useState("");
   const [notes,setNotes]=useState("");
-  const [orderType,setOrderType]=useState("delivery"); // delivery | return | exchange
+  const [orderType,setOrderType]=useState("delivery");
+  const [source,setSource]=useState("phone"); // delivery | return | exchange
   const [existingCustomer,setExistingCustomer]=useState(null);
 
   function lookupCustomer(phoneVal){
@@ -1151,7 +1157,7 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
     if(items.some(i=>!i.name?.trim())){setErr("في منتج ناقص اسمه");return;}
     if(items.some(i=>!i.price||parseFloat(i.price)<=0)){setErr("في منتج ناقص سعره");return;}
     const orderTime = today()+" "+new Date().toLocaleTimeString("ar-EG",{hour:"2-digit",minute:"2-digit"});
-    const order={id:genId(),customerName:customerName.trim(),phone:phone.trim(),governorate,address:address.trim(),notes,items,status:"pending",orderType,salesId:user.id,createdAt:orderTime,commission:0,commPaid:false,commSettings,_createdTs:Date.now(),lastActionAt:Date.now(),auditLog:[{by:user.name,at:now(),action:"تسجيل الطلب",details:"نوع الطلب: "+(orderType==="delivery"?"تسليم":orderType==="return"?"مرتجع":"تبديل")}]};
+    const order={id:genId(),customerName:customerName.trim(),phone:phone.trim(),governorate,address:address.trim(),notes,items,status:"pending",orderType,source,salesId:user.id,createdAt:orderTime,commission:0,commPaid:false,commSettings,_createdTs:Date.now(),lastActionAt:Date.now(),auditLog:[{by:user.name,at:now(),action:"تسجيل الطلب",details:"نوع الطلب: "+(orderType==="delivery"?"تسليم":orderType==="return"?"مرتجع":"تبديل")+" | المصدر: "+source}]};
     await dbAddOrder(order);
     setNotifications(prev=>[{
       id:Date.now(),
@@ -1210,7 +1216,7 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
               {EGYPT_GOVS.map(g=><option key={g} value={g}>{g}</option>)}
             </select>
           </Field>
-          <Field label="العنوان التفصيلي *"><input style={S.input} value={address} onChange={e=>setAddress(e.target.value)} placeholder="الشارع، الحي..."/></Field>
+          <Field label="العنوان التفصيلي *"><textarea style={{...S.input,height:72,resize:"vertical"}} value={address} onChange={e=>setAddress(e.target.value)} placeholder="الشارع، الحي، رقم المبنى..."/></Field>
         </div>
         <Field label="نوع الطلب">
           <div style={{display:"flex",gap:8}}>
@@ -1218,6 +1224,24 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
               <button key={t.v} type="button"
                 style={{flex:1,padding:"10px 8px",borderRadius:8,border:"2px solid "+(orderType===t.v?t.c:"#e2e8f0"),background:orderType===t.v?t.bg:"#fff",color:orderType===t.v?t.c:"#64748b",fontSize:13,fontWeight:orderType===t.v?600:400,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}
                 onClick={()=>setOrderType(t.v)}>
+                {t.l}
+              </button>
+            ))}
+          </div>
+        </Field>
+        <Field label="مصدر الأوردر">
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
+            {[
+              {v:"phone",l:"📞 مكالمة",c:"#0f2744"},
+              {v:"whatsapp",l:"💬 واتساب",c:"#10b981"},
+              {v:"facebook",l:"📘 فيسبوك",c:"#3b82f6"},
+              {v:"instagram",l:"📸 انستجرام",c:"#8b5cf6"},
+              {v:"tiktok",l:"🎵 تيكتوك",c:"#0f2744"},
+              {v:"website",l:"🌐 الموقع",c:"#f59e0b"},
+            ].map(t=>(
+              <button key={t.v} type="button"
+                style={{padding:"8px 4px",borderRadius:8,border:"2px solid "+(source===t.v?t.c:"#e2e8f0"),background:source===t.v?t.c+"15":"#fff",color:source===t.v?t.c:"#64748b",fontSize:12,fontWeight:source===t.v?600:400,cursor:"pointer",fontFamily:"inherit",transition:"all .15s"}}
+                onClick={()=>setSource(t.v)}>
                 {t.l}
               </button>
             ))}
@@ -1534,6 +1558,143 @@ function Row({label,value,tag,sub}){return <div style={S.row}><span style={S.row
 function Field({label,children}){return <div style={{marginBottom:12}}><div style={S.subLabel}>{label}</div>{children}</div>;}
 function ActionBox({title,children}){return <div style={S.actionBox}><div style={S.sectionTitle}>{title}</div>{children}</div>;}
 function Metric({label,value,icon,color="#374151"}){return <div style={S.metricCard}><div style={S.metricIcon}>{icon}</div><div style={{...S.metricVal,color}}>{value}</div><div style={S.metricLabel}>{label}</div></div>;}
+
+function AnalyticsPage({orders}){
+  const delivered = orders.filter(o=>o.status==="delivered");
+  const total = orders.length;
+
+  // Source breakdown
+  const sources = {};
+  const sourceLabels = {phone:"📞 مكالمة",whatsapp:"💬 واتساب",facebook:"📘 فيسبوك",instagram:"📸 انستجرام",tiktok:"🎵 تيكتوك",website:"🌐 الموقع"};
+  orders.forEach(o=>{const s=o.source||"phone";sources[s]=(sources[s]||0)+1;});
+  const sourceData=Object.entries(sources).sort((a,b)=>b[1]-a[1]);
+  const maxSource=sourceData[0]?.[1]||1;
+
+  // Governorate breakdown
+  const govs={};
+  orders.forEach(o=>{if(o.governorate)govs[o.governorate]=(govs[o.governorate]||0)+1;});
+  const govData=Object.entries(govs).sort((a,b)=>b[1]-a[1]).slice(0,8);
+  const maxGov=govData[0]?.[1]||1;
+
+  // Shipping breakdown
+  const ships={};
+  delivered.forEach(o=>{if(o.shippingCompany)ships[o.shippingCompany]=(ships[o.shippingCompany]||0)+1;});
+  const shipData=Object.entries(ships).sort((a,b)=>b[1]-a[1]);
+  const maxShip=shipData[0]?.[1]||1;
+
+  // Delivery rate by source
+  const sourceDelivery={};
+  Object.keys(sources).forEach(s=>{
+    const sOrders=orders.filter(o=>(o.source||"phone")===s);
+    const sDel=sOrders.filter(o=>o.status==="delivered").length;
+    sourceDelivery[s]=sOrders.length>0?Math.round((sDel/sOrders.length)*100):0;
+  });
+
+  // Order type breakdown
+  const types={delivery:0,return:0,exchange:0};
+  orders.forEach(o=>{const t=o.orderType||"delivery";types[t]=(types[t]||0)+1;});
+
+  // Revenue by source
+  const sourceRevenue={};
+  delivered.forEach(o=>{const s=o.source||"phone";sourceRevenue[s]=(sourceRevenue[s]||0)+calcTotal(o.items);});
+
+  const totalRevenue=delivered.reduce((s,o)=>s+calcTotal(o.items),0);
+  const deliveryRate=total>0?Math.round((delivered.length/total)*100):0;
+  const returnRate=total>0?Math.round((orders.filter(o=>o.status==="rejected").length/total)*100):0;
+
+  return(
+    <div style={S.pageWrap}>
+      <div style={S.pageHeader}><h1 style={S.pageTitle}>📈 تحليلات المبيعات</h1></div>
+
+      {/* Overview metrics */}
+      <div style={S.metricsRow}>
+        <Metric label="إجمالي الطلبات" value={total} icon="📋"/>
+        <Metric label="مُسلَّم" value={delivered.length} icon="✅" color="#10b981"/>
+        <Metric label="معدل التسليم" value={deliveryRate+"%"} icon="📊" color={deliveryRate>=70?"#10b981":"#f59e0b"}/>
+        <Metric label="معدل المرتجع" value={returnRate+"%"} icon="↩️" color={returnRate>20?"#ef4444":"#64748b"}/>
+        <Metric label="إجمالي الإيرادات" value={totalRevenue.toLocaleString()+" ج.م"} icon="💰" color="#3b82f6"/>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16,marginBottom:16}}>
+
+        {/* Source breakdown */}
+        <div style={S.dashCard}>
+          <div style={S.dashCardTitle}>📡 مصادر الطلبات</div>
+          {sourceData.length===0?<div style={S.empty}>لا بيانات</div>:sourceData.map(([s,c])=>(
+            <div key={s} style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:13,color:"#374151"}}>{sourceLabels[s]||s}</span>
+                <div style={{display:"flex",gap:10,fontSize:12}}>
+                  <span style={{color:"#64748b"}}>{c} طلب ({Math.round(c/total*100)}%)</span>
+                  <span style={{color:"#10b981"}}>تسليم: {sourceDelivery[s]}%</span>
+                </div>
+              </div>
+              <div style={{height:6,background:"#f1f5f9",borderRadius:3}}>
+                <div style={{height:6,width:(c/maxSource*100)+"%",background:"#3b82f6",borderRadius:3}}/>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Governorate breakdown */}
+        <div style={S.dashCard}>
+          <div style={S.dashCardTitle}>📍 توزيع المحافظات</div>
+          {govData.length===0?<div style={S.empty}>لا بيانات</div>:govData.map(([g,c])=>(
+            <div key={g} style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:13,color:"#374151"}}>{g}</span>
+                <span style={{fontSize:12,color:"#64748b"}}>{c} طلب ({Math.round(c/total*100)}%)</span>
+              </div>
+              <div style={{height:6,background:"#f1f5f9",borderRadius:3}}>
+                <div style={{height:6,width:(c/maxGov*100)+"%",background:"#10b981",borderRadius:3}}/>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Shipping breakdown */}
+        <div style={S.dashCard}>
+          <div style={S.dashCardTitle}>🚚 شركات الشحن والمناديب</div>
+          {shipData.length===0?<div style={S.empty}>لا توجد بيانات شحن بعد</div>:shipData.map(([s,c])=>(
+            <div key={s} style={{marginBottom:10}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                <span style={{fontSize:13,color:"#374151"}}>{s}</span>
+                <span style={{fontSize:12,color:"#64748b"}}>{c} تسليم ({Math.round(c/delivered.length*100)}%)</span>
+              </div>
+              <div style={{height:6,background:"#f1f5f9",borderRadius:3}}>
+                <div style={{height:6,width:(c/maxShip*100)+"%",background:"#8b5cf6",borderRadius:3}}/>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Order type breakdown */}
+        <div style={S.dashCard}>
+          <div style={S.dashCardTitle}>📦 أنواع الطلبات</div>
+          <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:16}}>
+            {[{k:"delivery",l:"تسليم",c:"#10b981",i:"📦"},{k:"return",l:"مرتجع",c:"#ef4444",i:"↩️"},{k:"exchange",l:"تبديل",c:"#f59e0b",i:"🔄"}].map(t=>(
+              <div key={t.k} style={{flex:1,minWidth:80,background:t.c+"15",borderRadius:10,padding:"12px 8px",textAlign:"center",border:"1px solid "+t.c+"30"}}>
+                <div style={{fontSize:20}}>{t.i}</div>
+                <div style={{fontSize:18,fontWeight:700,color:t.c,marginTop:4}}>{types[t.k]||0}</div>
+                <div style={{fontSize:11,color:"#64748b"}}>{t.l}</div>
+                <div style={{fontSize:11,color:t.c}}>{total>0?Math.round(((types[t.k]||0)/total)*100):0}%</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Revenue by source */}
+          <div style={{...S.sectionTitle,marginBottom:10}}>إيرادات حسب المصدر</div>
+          {Object.entries(sourceRevenue).sort((a,b)=>b[1]-a[1]).map(([s,rev])=>(
+            <div key={s} style={{display:"flex",justifyContent:"space-between",padding:"6px 0",borderBottom:"0.5px solid #f8fafc",fontSize:13}}>
+              <span style={{color:"#374151"}}>{sourceLabels[s]||s}</span>
+              <span style={{fontWeight:600,color:"#10b981"}}>{rev.toLocaleString()} ج.م</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function PerformancePage({orders,users}){
   const salesUsers=users.filter(u=>u.roles?.includes("sales"));
