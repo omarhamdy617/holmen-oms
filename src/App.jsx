@@ -1561,51 +1561,74 @@ function ActionBox({title,children}){return <div style={S.actionBox}><div style=
 function Metric({label,value,icon,color="#374151"}){return <div style={S.metricCard}><div style={S.metricIcon}>{icon}</div><div style={{...S.metricVal,color}}>{value}</div><div style={S.metricLabel}>{label}</div></div>;}
 
 function AnalyticsPage({orders}){
-  const delivered = orders.filter(o=>o.status==="delivered");
-  const total = orders.length;
+  const [period,setPeriod]=useState("all"); // all | month | week | 3months
+  
+  // Filter by period
+  const now=Date.now(), day=86400000;
+  const periodMap={week:7*day,month:30*day,"3months":90*day};
+  const filteredOrders = period==="all" ? orders : orders.filter(o=>{
+    if(!o._createdTs) return true; // keep old orders without timestamp
+    return (now-o._createdTs) <= periodMap[period];
+  });
+
+  const delivered = filteredOrders.filter(o=>o.status==="delivered");
+  const total = filteredOrders.length;
 
   // Source breakdown
   const sources = {};
   const sourceLabels = {phone:"مكالمة",whatsapp:"واتساب",facebook:"فيسبوك",instagram:"انستجرام",tiktok:"تيكتوك",website:"الموقع"};
-  orders.forEach(o=>{const s=o.source||"phone";sources[s]=(sources[s]||0)+1;});
+  filteredOrders.forEach(o=>{const s=o.source||(o.id?.startsWith("WOO-")?"website":"phone");sources[s]=(sources[s]||0)+1;});
   const sourceData=Object.entries(sources).sort((a,b)=>b[1]-a[1]);
   const maxSource=sourceData[0]?.[1]||1;
 
   // Governorate breakdown
   const govs={};
-  orders.forEach(o=>{if(o.governorate)govs[o.governorate]=(govs[o.governorate]||0)+1;});
+  filteredOrders.forEach(o=>{if(o.governorate)govs[o.governorate]=(govs[o.governorate]||0)+1;});
   const govData=Object.entries(govs).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const maxGov=govData[0]?.[1]||1;
 
   // Shipping breakdown
   const ships={};
-  delivered.forEach(o=>{if(o.shippingCompany)ships[o.shippingCompany]=(ships[o.shippingCompany]||0)+1;});
+  // ships already uses delivered which is filtered
   const shipData=Object.entries(ships).sort((a,b)=>b[1]-a[1]);
   const maxShip=shipData[0]?.[1]||1;
 
   // Delivery rate by source
   const sourceDelivery={};
   Object.keys(sources).forEach(s=>{
-    const sOrders=orders.filter(o=>(o.source||"phone")===s);
+    const sOrders=filteredOrders.filter(o=>(o.source||(o.id?.startsWith("WOO-")?"website":"phone"))===s);
     const sDel=sOrders.filter(o=>o.status==="delivered").length;
     sourceDelivery[s]=sOrders.length>0?Math.round((sDel/sOrders.length)*100):0;
   });
 
   // Order type breakdown
   const types={delivery:0,return:0,exchange:0};
-  orders.forEach(o=>{const t=o.orderType||"delivery";types[t]=(types[t]||0)+1;});
+  filteredOrders.forEach(o=>{const t=o.orderType||"delivery";types[t]=(types[t]||0)+1;});
 
   // Revenue by source
   const sourceRevenue={};
-  delivered.forEach(o=>{const s=o.source||"phone";sourceRevenue[s]=(sourceRevenue[s]||0)+calcTotal(o.items);});
+  delivered.forEach(o=>{const s=o.source||(o.id?.startsWith("WOO-")?"website":"phone");sourceRevenue[s]=(sourceRevenue[s]||0)+calcTotal(o.items);});
 
   const totalRevenue=delivered.reduce((s,o)=>s+calcTotal(o.items),0);
+
+  // Products breakdown
+  const products={};
+  filteredOrders.forEach(o=>(o.items||[]).forEach(i=>{if(i.name){products[i.name]=(products[i.name]||{count:0,revenue:0});products[i.name].count+=(parseInt(i.qty)||1);if(o.status==="delivered")products[i.name].revenue+=(parseFloat(i.price)||0)*(parseInt(i.qty)||1);}}))
+  const productData=Object.entries(products).sort((a,b)=>b[1].count-a[1].count).slice(0,10);
+  const maxProduct=productData[0]?.[1].count||1;
   const deliveryRate=total>0?Math.round((delivered.length/total)*100):0;
   const returnRate=total>0?Math.round((orders.filter(o=>o.status==="rejected").length/total)*100):0;
 
   return(
     <div style={S.pageWrap}>
-      <div style={S.pageHeader}><h1 style={S.pageTitle}>📈 تحليلات المبيعات</h1></div>
+      <div style={{...S.pageHeader,display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
+        <h1 style={{...S.pageTitle,marginBottom:0}}>📈 تحليلات المبيعات</h1>
+        <div style={{display:"flex",gap:6}}>
+          {[{v:"all",l:"الكل"},{v:"week",l:"٧ أيام"},{v:"month",l:"شهر"},{v:"3months",l:"٣ أشهر"}].map(p=>(
+            <button key={p.v} style={{...S.filterBtn,...(period===p.v?S.filterBtnActive:{})}} onClick={()=>setPeriod(p.v)}>{p.l}</button>
+          ))}
+        </div>
+      </div>
 
       {/* Overview metrics */}
       <div style={S.metricsRow}>
@@ -1692,16 +1715,41 @@ function AnalyticsPage({orders}){
             </div>
           ))}
         </div>
+
+        {/* Products breakdown */}
+        <div style={{...S.dashCard,gridColumn:"1/-1"}}>
+          <div style={S.dashCardTitle}>📦 أكثر المنتجات مبيعاً</div>
+          {productData.length===0?<div style={S.empty}>لا بيانات</div>:productData.map(([name,data],i)=>(
+            <div key={name} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"center"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{width:22,height:22,borderRadius:"50%",background:i<3?"#f59e0b":"#e2e8f0",color:i<3?"#fff":"#64748b",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,flexShrink:0}}>{i+1}</span>
+                  <span style={{fontSize:13,color:"#374151",fontWeight:500}}>{name}</span>
+                </div>
+                <div style={{display:"flex",gap:12,fontSize:12}}>
+                  <span style={{color:"#3b82f6",fontWeight:600}}>{data.count} قطعة</span>
+                  {data.revenue>0&&<span style={{color:"#10b981",fontWeight:600}}>{data.revenue.toLocaleString()} ج.م</span>}
+                </div>
+              </div>
+              <div style={{height:6,background:"#f1f5f9",borderRadius:3}}>
+                <div style={{height:6,width:(data.count/maxProduct*100)+"%",background:i===0?"#f59e0b":i===1?"#94a3b8":i===2?"#d97706":"#3b82f6",borderRadius:3}}/>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
 function PerformancePage({orders,users}){
+  const [period,setPeriod]=useState("month");
   const salesUsers=users.filter(u=>u.roles?.includes("sales"));
   const nowTs=Date.now(), day=86400000;
+  const periodMap={week:7*day,month:30*day,"3months":90*day,all:9999*day};
+  const filteredOrders=period==="all"?orders:orders.filter(o=>!o._createdTs||(nowTs-o._createdTs)<=periodMap[period]);
   function uStats(u){
-    const my=orders.filter(o=>o.salesId===u.id);
+    const my=filteredOrders.filter(o=>o.salesId===u.id);
     const del=my.filter(o=>o.status==="delivered");
     const rej=my.filter(o=>o.status==="rejected");
     const pen=my.filter(o=>o.status==="pending");
@@ -1716,15 +1764,22 @@ function PerformancePage({orders,users}){
   const stats=salesUsers.map(uStats).sort((a,b)=>b.score-a.score);
   const sc=s=>s>=80?"#10b981":s>=60?"#f59e0b":"#ef4444";
   const sl=s=>s>=80?"ممتاز 🌟":s>=60?"جيد 👍":s>=40?"متوسط ⚠️":"يحتاج تحسين 🔴";
-  const totDel=orders.filter(o=>o.status==="delivered").length;
-  const totRev=orders.filter(o=>o.status==="delivered").reduce((s,o)=>s+calcTotal(o.items),0);
-  const teamRate=orders.length>0?Math.round((totDel/orders.length)*100):0;
+  const totDel=filteredOrders.filter(o=>o.status==="delivered").length;
+  const totRev=filteredOrders.filter(o=>o.status==="delivered").reduce((s,o)=>s+calcTotal(o.items),0);
+  const teamRate=filteredOrders.length>0?Math.round((totDel/filteredOrders.length)*100):0;
   return(
     <div style={S.pageWrap}>
-      <div style={S.pageHeader}><h1 style={S.pageTitle}>🏆 أداء الفريق</h1></div>
+      <div style={{...S.pageHeader,display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
+        <h1 style={{...S.pageTitle,marginBottom:0}}>🏆 أداء الفريق</h1>
+        <div style={{display:"flex",gap:6}}>
+          {[{v:"week",l:"٧ أيام"},{v:"month",l:"شهر"},{v:"3months",l:"٣ أشهر"},{v:"all",l:"الكل"}].map(p=>(
+            <button key={p.v} style={{...S.filterBtn,...(period===p.v?S.filterBtnActive:{})}} onClick={()=>setPeriod(p.v)}>{p.l}</button>
+          ))}
+        </div>
+      </div>
       <div style={S.metricsRow}>
         <Metric label="الفريق" value={salesUsers.length+" موظف"} icon="👥"/>
-        <Metric label="إجمالي الطلبات" value={orders.length} icon="📋"/>
+        <Metric label="إجمالي الطلبات" value={filteredOrders.length} icon="📋"/>
         <Metric label="مُسلَّم" value={totDel} icon="✅" color="#10b981"/>
         <Metric label="معدل التسليم" value={teamRate+"%"} icon="📊" color={teamRate>=70?"#10b981":"#f59e0b"}/>
         <Metric label="إجمالي الإيرادات" value={totRev.toLocaleString()+" ج.م"} icon="💰" color="#3b82f6"/>
