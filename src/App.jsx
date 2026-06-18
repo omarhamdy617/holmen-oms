@@ -836,7 +836,7 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
       ):(
         <div style={S.orderList}>{visible.map(o=><OrderCard key={o.id} order={o} users={users} onSelect={()=>setSelected(o)}/>)}</div>
       )}
-      {selected&&<OrderModal order={selected} user={user} users={users} shipping={shipping} onClose={()=>setSelected(null)} dbDeleteOrder={async(id)=>{if(window.confirm("هتمسح الأوردر ده نهائياً؟")){await dbDeleteOrder(id);setSelected(null);showToast("تم مسح الأوردر");}}} onUpdate={async u=>{
+      {selected&&<OrderModal order={selected} user={user} users={users} shipping={shipping} onClose={()=>setSelected(null)} dbDeleteOrder={async(id)=>{const ok=window.confirm("هتمسح الأوردر "+id+" نهائياً؟");if(ok){await dbDeleteOrder(id);setSelected(null);showToast("تم مسح الأوردر");}}} onUpdate={async u=>{
   await dbUpdateOrder(u);
   setSelected(u);
   showToast("تم تحديث الطلب ✅");
@@ -941,7 +941,7 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate,dbDeleteOrder}){
               {isAdmin&&<button style={{...S.tabBtn,...(tab==="audit"?S.tabBtnActive:{})}} onClick={()=>setTab("audit")}>🕐 سجل</button>}
             </div>
             <div style={{display:"flex",gap:6,alignItems:"center"}}>
-              {hasRole(user,"admin")&&dbDeleteOrder&&<button onClick={()=>dbDeleteOrder(order.id)} style={{background:"#fee2e2",border:"1px solid #fecaca",borderRadius:6,color:"#ef4444",fontSize:12,padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>🗑️ مسح</button>}
+              {hasRole(user,"admin")&&dbDeleteOrder&&<button onClick={()=>dbDeleteOrder(order.id)} style={{background:"none",border:"none",color:"#ef4444",fontSize:14,cursor:"pointer",padding:"2px 4px",opacity:0.6,lineHeight:1}} title="مسح الأوردر">🗑️</button>}
               <button style={S.closeBtn} onClick={onClose}>✕</button>
             </div>
           </div>
