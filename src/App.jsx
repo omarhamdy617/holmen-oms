@@ -267,10 +267,19 @@ export default function App(){
             const newNotifs=[];
             newOrders.forEach(newO=>{
               const oldO=prevOrders.find(x=>x.id===newO.id);
-              if(!oldO) return; // skip brand new orders in notification
+              if(!oldO){
+                // Brand new order from website
+                if(newO.id?.startsWith("WOO-")){
+                  newNotifs.push({id:Date.now()+Math.random(),orderId:newO.id,customerName:newO.customerName,text:`أوردر جديد من الموقع — ${newO.customerName}`,time:now(),read:false});
+                  sendPushNotification("🌐 أوردر جديد من الموقع — هولمن",`العميل: ${newO.customerName}
+الإجمالي: ${(newO.items||[]).reduce((s,i)=>s+(parseFloat(i.price)||0)*(parseInt(i.qty)||1),0).toLocaleString()} ج.م`);
+                }
+                return;
+              }
               // Status changed
               if(oldO.status!==newO.status){
                 newNotifs.push({id:Date.now()+Math.random(),orderId:newO.id,customerName:newO.customerName,text:`تغيرت حالة الأوردر إلى "${STATUS_MAP[newO.status]?.label}"`,time:now(),read:false});
+                sendPushNotification(`${STATUS_MAP[newO.status]?.label} — هولمن`,`أوردر ${newO.customerName} أصبح ${STATUS_MAP[newO.status]?.label}`);
               }
               // New internal note added
               const oldNotes=(oldO.internalNotes||[]).length;
@@ -279,6 +288,7 @@ export default function App(){
                 const lastNote=newO.internalNotes[newNotes-1];
                 if(lastNote?.by!==currentUser?.name){
                   newNotifs.push({id:Date.now()+Math.random(),orderId:newO.id,customerName:newO.customerName,text:`ملاحظة جديدة من ${lastNote?.by}: "${lastNote?.text?.slice(0,40)}..."`,time:now(),read:false});
+                  sendPushNotification("💬 ملاحظة جديدة — هولمن",`${lastNote?.by} أضاف ملاحظة على أوردر ${newO.customerName}`);
                 }
               }
             });
@@ -1228,7 +1238,12 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
       time:now(),
       read:false
     },...prev].slice(0,50));
-    sendPushNotification("🛒 أوردر جديد",`${order.customerName} — ${calcTotal(order.items).toLocaleString()} ج.م`);
+    sendPushNotification(
+      "🛒 أوردر جديد — هولمن",
+      `${user.name} سجّل أوردر جديد
+العميل: ${order.customerName}
+الإجمالي: ${calcTotal(order.items).toLocaleString()} ج.م`
+    );
     showToast("تم تسجيل الطلب ✅");setPage("orders");
   }
   const total=calcTotal(items);
