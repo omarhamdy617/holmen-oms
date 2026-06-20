@@ -4,7 +4,16 @@ import { useState, useEffect, useCallback } from "react";
 const SUPABASE_URL = "https://asyoohmjfwcfzrydxykb.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzeW9vaG1qZndjZnpyeWR4eWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyODA2NjAsImV4cCI6MjA5Njg1NjY2MH0.FOAZKbRGaYQpbCsYizpcNRCjfkPFp-WlljTnn2EZ7Qg";
 
-// ─── BROWSER PUSH NOTIFICATIONS ─────────────────────────────────────────────
+// ─── PUSH NOTIFICATIONS via Service Worker ──────────────────────────────────
+async function registerSW(){
+  if(!("serviceWorker" in navigator)) return;
+  try{
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    console.log("SW registered:", reg.scope);
+    return reg;
+  }catch(e){ console.log("SW error:", e); }
+}
+
 async function requestNotifPermission(){
   if(!("Notification" in window)) return false;
   if(Notification.permission==="granted") return true;
@@ -12,18 +21,29 @@ async function requestNotifPermission(){
   return perm==="granted";
 }
 
-function sendPushNotification(title, message){
+async function sendPushNotification(title, body){
   if(!("Notification" in window)) return;
   if(Notification.permission!=="granted") return;
   try{
-    new Notification(title, {
-      body: message,
-      icon: "/icon-192.png",
-      badge: "/icon-192.png",
-      dir: "rtl",
-      lang: "ar",
-    });
-  }catch{}
+    // Try via Service Worker first (works in background)
+    if("serviceWorker" in navigator){
+      const reg = await navigator.serviceWorker.ready;
+      await reg.showNotification(title, {
+        body,
+        icon:"/icon-192.png",
+        dir:"rtl",
+        lang:"ar",
+        vibrate:[200,100,200],
+        tag:"holmen-"+Date.now(),
+        renotify:true,
+      });
+    } else {
+      new Notification(title, { body, icon:"/icon-192.png", dir:"rtl" });
+    }
+  }catch(e){
+    // Fallback
+    try{ new Notification(title, { body, icon:"/icon-192.png", dir:"rtl" }); }catch{}
+  }
 }
 
 async function sb(path, method="GET", body=null){
@@ -214,6 +234,11 @@ export default function App(){
   const [alerts,setAlerts]=useState([]);
   const [loading,setLoading]=useState(true);
   const [dbError,setDbError]=useState(null);
+
+  // ── Register Service Worker
+  useEffect(()=>{
+    registerSW();
+  },[]);
 
   // ── Load all data from Supabase on start
   useEffect(()=>{
