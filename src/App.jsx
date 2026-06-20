@@ -178,7 +178,12 @@ export default function App(){
   const [users,setUsers]=useState([]);
   const [shipping,setShipping]=useState([]);
   const [products,setProducts]=useState([]);
-  const [currentUser,setCurrentUser]=useState(null);
+  const [currentUser,setCurrentUser]=useState(()=>{
+    try{
+      const saved=localStorage.getItem("holmen_user");
+      return saved?JSON.parse(saved):null;
+    }catch{return null;}
+  });
   const [orders,setOrders]=useState([]);
   const [page,setPage]=useState("orders");
   const [toast,setToast]=useState(null);
@@ -209,6 +214,14 @@ export default function App(){
         const rs=sets.find(x=>x.key==="reminder_settings");
         if(cs)setCommSettings(cs.value);
         if(rs)setReminderSettings(rs.value);
+        // Verify saved user still exists in DB
+        if(currentUser){
+          const stillExists=u.find(x=>x.id===currentUser.id&&x.username===currentUser.username);
+          if(!stillExists){
+            setCurrentUser(null);
+            try{localStorage.removeItem("holmen_user");}catch{}
+          }
+        }
         setDbError(null);
       }catch(e){
         setDbError("تعذر الاتصال بقاعدة البيانات: "+e.message);
@@ -391,11 +404,15 @@ export default function App(){
     </div>
   );
 
-  if(!currentUser)return <Login users={users} onLogin={u=>{setCurrentUser(u);setPage("orders");}}/>;
+  if(!currentUser)return <Login users={users} onLogin={u=>{
+    setCurrentUser(u);
+    setPage("orders");
+    try{localStorage.setItem("holmen_user",JSON.stringify(u));}catch{}
+  }}/>;
   const liveUser=users.find(u=>u.id===currentUser.id)||currentUser;
   return(
     <div style={S.app}>
-      <Sidebar user={liveUser} page={page} setPage={p=>{setPage(p);setSidebarOpen(false);}} onLogout={()=>setCurrentUser(null)} alerts={alerts} isOpen={sidebarOpen} onClose={()=>setSidebarOpen(false)} onBell={()=>{setNotifOpen(p=>!p);setNotifications(p=>p.map(n=>({...n,read:true})));}} unreadCount={notifications.filter(n=>!n.read).length}/>
+      <Sidebar user={liveUser} page={page} setPage={p=>{setPage(p);setSidebarOpen(false);}} onLogout={()=>{setCurrentUser(null);try{localStorage.removeItem("holmen_user");}catch{}}} alerts={alerts} isOpen={sidebarOpen} onClose={()=>setSidebarOpen(false)} onBell={()=>{setNotifOpen(p=>!p);setNotifications(p=>p.map(n=>({...n,read:true})));}} unreadCount={notifications.filter(n=>!n.read).length}/>
       {/* Notifications Panel */}
       {notifOpen&&(
         <div style={{position:"fixed",top:0,left:220,width:320,height:"100vh",background:"var(--bg,#fff)",boxShadow:"4px 0 20px rgba(0,0,0,.15)",zIndex:98,display:"flex",flexDirection:"column",direction:"rtl",fontFamily:"Cairo,sans-serif"}} className="notif-panel">
