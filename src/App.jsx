@@ -567,6 +567,15 @@ function Sidebar({user,page,setPage,onLogout,alerts=[],isOpen,onClose,onBell,unr
         </button>)}</nav>
       </div>
       <button style={S.logoutBtn} onClick={onLogout}>خروج ↩</button>
+      <button style={{...S.logoutBtn,marginTop:6,fontSize:11,color:"#f59e0b"}} onClick={()=>{
+        if(typeof window!=="undefined"&&window.OneSignalDeferred){
+          window.OneSignalDeferred.push(async function(OneSignal){
+            await OneSignal.Notifications.requestPermission();
+          });
+        } else if(typeof Notification!=="undefined"){
+          Notification.requestPermission();
+        }
+      }}>🔔 تفعيل الإشعارات</button>
     </aside>
   );
 }
