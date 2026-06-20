@@ -1689,9 +1689,10 @@ function AnalyticsPage({orders}){
   const govData=Object.entries(govs).sort((a,b)=>b[1]-a[1]).slice(0,8);
   const maxGov=govData[0]?.[1]||1;
 
-  // Shipping breakdown
+  // Shipping breakdown — shipped + delivered
+  const shippedOrDelivered=filteredOrders.filter(o=>o.status==="shipped"||o.status==="delivered");
   const ships={};
-  // ships already uses delivered which is filtered
+  shippedOrDelivered.forEach(o=>{if(o.shippingCompany)ships[o.shippingCompany]=(ships[o.shippingCompany]||0)+1;});
   const shipData=Object.entries(ships).sort((a,b)=>b[1]-a[1]);
   const maxShip=shipData[0]?.[1]||1;
 
@@ -1781,17 +1782,24 @@ function AnalyticsPage({orders}){
         {/* Shipping breakdown */}
         <div style={S.dashCard}>
           <div style={S.dashCardTitle}>🚚 شركات الشحن والمناديب</div>
-          {shipData.length===0?<div style={S.empty}>لا توجد بيانات شحن بعد</div>:shipData.map(([s,c])=>(
-            <div key={s} style={{marginBottom:10}}>
-              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                <span style={{fontSize:13,color:"#374151"}}>{s}</span>
-                <span style={{fontSize:12,color:"#64748b"}}>{c} تسليم ({Math.round(c/delivered.length*100)}%)</span>
+          {shipData.length===0?<div style={S.empty}>لا توجد بيانات شحن بعد — لازم يتسجل شحن على الأوردرات أول</div>:shipData.map(([s,c])=>{
+            const delByShip=filteredOrders.filter(o=>o.shippingCompany===s&&o.status==="delivered").length;
+            return(
+            <div key={s} style={{marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",marginBottom:4,alignItems:"center"}}>
+                <span style={{fontSize:13,color:"#374151",fontWeight:500}}>{s}</span>
+                <div style={{display:"flex",gap:10,fontSize:12}}>
+                  <span style={{color:"#6366f1"}}>📦 {c} شحنة</span>
+                  <span style={{color:"#10b981"}}>✅ {delByShip} مُسلَّم</span>
+                  {c>0&&<span style={{color:"#94a3b8"}}>{Math.round(delByShip/c*100)}%</span>}
+                </div>
               </div>
               <div style={{height:6,background:"#f1f5f9",borderRadius:3}}>
                 <div style={{height:6,width:(c/maxShip*100)+"%",background:"#8b5cf6",borderRadius:3}}/>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Order type breakdown */}
