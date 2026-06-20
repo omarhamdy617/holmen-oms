@@ -4,6 +4,37 @@ import { useState, useEffect, useCallback } from "react";
 const SUPABASE_URL = "https://asyoohmjfwcfzrydxykb.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzeW9vaG1qZndjZnpyeWR4eWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyODA2NjAsImV4cCI6MjA5Njg1NjY2MH0.FOAZKbRGaYQpbCsYizpcNRCjfkPFp-WlljTnn2EZ7Qg";
 
+// ─── ONESIGNAL PUSH NOTIFICATIONS ──────────────────────────────────────────
+function initOneSignal(){
+  if(typeof window === "undefined" || !window.OneSignal) return;
+  window.OneSignalDeferred = window.OneSignalDeferred || [];
+  window.OneSignalDeferred.push(async function(OneSignal){
+    await OneSignal.init({
+      appId: "32a492e2-66e0-4eeb-bcce-248cb079e44f",
+      safari_web_id: "web.onesignal.auto.32a492e2-66e0-4eeb-bcce-248cb079e44f",
+      notifyButton: { enable: false },
+      allowLocalhostAsSecureOrigin: true,
+    });
+  });
+}
+
+async function sendPushNotification(title, message){
+  // Send via OneSignal REST API through Supabase to avoid CORS
+  try{
+    await fetch("https://onesignal.com/api/v1/notifications",{
+      method:"POST",
+      headers:{"Content-Type":"application/json","Authorization":"Basic OS_API_KEY"},
+      body:JSON.stringify({
+        app_id:"32a492e2-66e0-4eeb-bcce-248cb079e44f",
+        included_segments:["All"],
+        headings:{ar:title,en:title},
+        contents:{ar:message,en:message},
+        url:"https://holmen-oms.vercel.app"
+      })
+    });
+  }catch{}
+}
+
 async function sb(path, method="GET", body=null){
   const opts = {
     method,
@@ -192,6 +223,11 @@ export default function App(){
   const [alerts,setAlerts]=useState([]);
   const [loading,setLoading]=useState(true);
   const [dbError,setDbError]=useState(null);
+
+  // ── Init OneSignal
+  useEffect(()=>{
+    initOneSignal();
+  },[]);
 
   // ── Load all data from Supabase on start
   useEffect(()=>{
@@ -395,6 +431,14 @@ export default function App(){
     return()=>document.head.removeChild(style);
   },[]);
   function showToast(msg,type="success"){setToast({msg,type});setTimeout(()=>setToast(null),3000);}
+
+  function requestNotificationPermission(){
+    if(typeof window!=="undefined"&&window.OneSignalDeferred){
+      window.OneSignalDeferred.push(async function(OneSignal){
+        await OneSignal.Notifications.requestPermission();
+      });
+    }
+  }
 
   if(loading) return(
     <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f8fafc",fontFamily:"Cairo,sans-serif",flexDirection:"column",gap:16}}>
@@ -1197,6 +1241,7 @@ function NewOrderPage({user,orders,setOrders,showToast,setPage,products,commSett
       time:now(),
       read:false
     },...prev].slice(0,50));
+    sendPushNotification("🛒 أوردر جديد",`${order.customerName} — ${calcTotal(order.items).toLocaleString()} ج.م`);
     showToast("تم تسجيل الطلب ✅");setPage("orders");
   }
   const total=calcTotal(items);
