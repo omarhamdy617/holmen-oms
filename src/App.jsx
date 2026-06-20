@@ -4,33 +4,24 @@ import { useState, useEffect, useCallback } from "react";
 const SUPABASE_URL = "https://asyoohmjfwcfzrydxykb.supabase.co";
 const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFzeW9vaG1qZndjZnpyeWR4eWtiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEyODA2NjAsImV4cCI6MjA5Njg1NjY2MH0.FOAZKbRGaYQpbCsYizpcNRCjfkPFp-WlljTnn2EZ7Qg";
 
-// ─── ONESIGNAL PUSH NOTIFICATIONS ──────────────────────────────────────────
-function initOneSignal(){
-  if(typeof window === "undefined" || !window.OneSignal) return;
-  window.OneSignalDeferred = window.OneSignalDeferred || [];
-  window.OneSignalDeferred.push(async function(OneSignal){
-    await OneSignal.init({
-      appId: "32a492e2-66e0-4eeb-bcce-248cb079e44f",
-      safari_web_id: "web.onesignal.auto.32a492e2-66e0-4eeb-bcce-248cb079e44f",
-      notifyButton: { enable: false },
-      allowLocalhostAsSecureOrigin: true,
-    });
-  });
+// ─── BROWSER PUSH NOTIFICATIONS ─────────────────────────────────────────────
+async function requestNotifPermission(){
+  if(!("Notification" in window)) return false;
+  if(Notification.permission==="granted") return true;
+  const perm = await Notification.requestPermission();
+  return perm==="granted";
 }
 
-async function sendPushNotification(title, message){
-  // Send via OneSignal REST API through Supabase to avoid CORS
+function sendPushNotification(title, message){
+  if(!("Notification" in window)) return;
+  if(Notification.permission!=="granted") return;
   try{
-    await fetch("https://onesignal.com/api/v1/notifications",{
-      method:"POST",
-      headers:{"Content-Type":"application/json","Authorization":"Basic OS_API_KEY"},
-      body:JSON.stringify({
-        app_id:"32a492e2-66e0-4eeb-bcce-248cb079e44f",
-        included_segments:["All"],
-        headings:{ar:title,en:title},
-        contents:{ar:message,en:message},
-        url:"https://holmen-oms.vercel.app"
-      })
+    new Notification(title, {
+      body: message,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      dir: "rtl",
+      lang: "ar",
     });
   }catch{}
 }
@@ -223,11 +214,6 @@ export default function App(){
   const [alerts,setAlerts]=useState([]);
   const [loading,setLoading]=useState(true);
   const [dbError,setDbError]=useState(null);
-
-  // ── Init OneSignal
-  useEffect(()=>{
-    initOneSignal();
-  },[]);
 
   // ── Load all data from Supabase on start
   useEffect(()=>{
@@ -567,15 +553,7 @@ function Sidebar({user,page,setPage,onLogout,alerts=[],isOpen,onClose,onBell,unr
         </button>)}</nav>
       </div>
       <button style={S.logoutBtn} onClick={onLogout}>خروج ↩</button>
-      <button style={{...S.logoutBtn,marginTop:6,fontSize:11,color:"#f59e0b"}} onClick={()=>{
-        if(typeof window!=="undefined"&&window.OneSignalDeferred){
-          window.OneSignalDeferred.push(async function(OneSignal){
-            await OneSignal.Notifications.requestPermission();
-          });
-        } else if(typeof Notification!=="undefined"){
-          Notification.requestPermission();
-        }
-      }}>🔔 تفعيل الإشعارات</button>
+      <button style={{...S.logoutBtn,marginTop:6,fontSize:11,color:"#f59e0b"}} onClick={async()=>{const ok=await requestNotifPermission();if(ok)sendPushNotification("هولمن OMS","✅ الإشعارات شغالة!");}}>🔔 تفعيل الإشعارات</button>
     </aside>
   );
 }
