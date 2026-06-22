@@ -851,6 +851,11 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
           </button>
         </div>
         {/* Status pills */}
+        <div style={{fontSize:12,color:"#64748b",marginBottom:8,textAlign:"right"}}>
+          {filter!=="all"||search||govFilter.length>0||dateFrom||dateTo||salesFilter!=="all"
+            ? <span>نتائج الفلاتر: <b style={{color:"#0f2744"}}>{visible.length}</b> أوردر</span>
+            : <span>إجمالي: <b style={{color:"#0f2744"}}>{orders.length}</b> أوردر</span>}
+        </div>
         <div style={{...S.filterRow,marginBottom:10}}>
           {["all","pending","confirmed","shipped","delivered","rejected","cancelled"].map(f=>(
             <button key={f} style={{...S.filterBtn,...(filter===f?S.filterBtnActive:{})}} onClick={()=>setFilter(f)}>
@@ -888,6 +893,23 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
                 </select>
               </div>
             )}
+            <div style={{gridColumn:"1/-1"}}>
+              <div style={{...S.subLabel,marginBottom:6}}>فترة سريعة</div>
+              <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                {[
+                  {l:"اليوم",    f:()=>{const t=new Date().toISOString().slice(0,10);setDateFrom(t);setDateTo(t);}},
+                  {l:"أمس",     f:()=>{const t=new Date(Date.now()-86400000).toISOString().slice(0,10);setDateFrom(t);setDateTo(t);}},
+                  {l:"٧ أيام",  f:()=>{setDateFrom(new Date(Date.now()-7*86400000).toISOString().slice(0,10));setDateTo(new Date().toISOString().slice(0,10));}},
+                  {l:"١٤ يوم",  f:()=>{setDateFrom(new Date(Date.now()-14*86400000).toISOString().slice(0,10));setDateTo(new Date().toISOString().slice(0,10));}},
+                  {l:"٣٠ يوم",  f:()=>{setDateFrom(new Date(Date.now()-30*86400000).toISOString().slice(0,10));setDateTo(new Date().toISOString().slice(0,10));}},
+                  {l:"هذا الشهر",f:()=>{const n=new Date();setDateFrom(new Date(n.getFullYear(),n.getMonth(),1).toISOString().slice(0,10));setDateTo(n.toISOString().slice(0,10));}},
+                  {l:"الشهر الماضي",f:()=>{const n=new Date();setDateFrom(new Date(n.getFullYear(),n.getMonth()-1,1).toISOString().slice(0,10));setDateTo(new Date(n.getFullYear(),n.getMonth(),0).toISOString().slice(0,10));}},
+                  {l:"الكل",    f:()=>{setDateFrom("");setDateTo("");}},
+                ].map(p=>(
+                  <button key={p.l} type="button" onClick={p.f} style={{fontSize:11,padding:"4px 10px",borderRadius:6,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontFamily:"inherit",color:"#374151"}}>{p.l}</button>
+                ))}
+              </div>
+            </div>
             <div>
               <div style={S.subLabel}>من تاريخ</div>
               <input style={S.input} type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}/>
@@ -1074,6 +1096,11 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate,dbDeleteOrder}){
                 <button style={{...S.waBtn,marginTop:8}} onClick={()=>openWhatsApp(order.phone,buildWAMessage({...order,status:"confirmed"},"confirmed"))}>📲 إرسال إشعار واتساب للعميل</button>
               </ActionBox>
             )}
+            {hasRole(user,"supervisor")&&(order.status==="pending"||order.status==="confirmed")&&(
+              <ActionBox title="إلغاء الطلب">
+                <button style={{...S.actionBtn,background:"#f9fafb",color:"#6b7280",borderColor:"#e5e7eb"}} onClick={()=>{const r=window.prompt("سبب الإلغاء:");if(r!==null)auditUpdate({...order,status:"cancelled",cancelReason:r},"إلغاء الطلب","السبب: "+r);}}>🚫 إلغاء الطلب</button>
+              </ActionBox>
+            )}
             {hasRole(user,"shipping")&&order.status==="confirmed"&&(
               <ActionBox title="تسليم للشحن">
                 <div style={S.subLabel}>اختار شركة الشحن أو المندوب *</div>
@@ -1091,10 +1118,6 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate,dbDeleteOrder}){
                 <div style={{background:"#f8fafc",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#64748b",marginBottom:10}}>شُحن مع: <strong>{order.shippingCompany}</strong></div>
                 <div style={{display:"flex",gap:8,marginBottom:8}}>
                   <button style={{...S.actionBtn,flex:1}} onClick={()=>auditUpdate({...order,status:"delivered",deliveredAt:today(),commission:order.orderType==="delivery"||!order.orderType?calcComm(calcTotal(order.items),order.commSettings&&order.commSettings.value>0?order.commSettings:commSettings):0},"تسجيل الاستلام")}>✅ تم الاستلام</button>
-                  <button style={{...S.actionBtn,flex:1,background:"#f3f4f6",color:"#6b7280",borderColor:"#e5e7eb"}} onClick={()=>{
-                    const reason=window.prompt("سبب الإلغاء:");
-                    if(reason!==null)auditUpdate({...order,status:"cancelled",cancelReason:reason},"إلغاء الطلب","السبب: "+reason);
-                  }}>🚫 إلغاء</button>
                   <button style={{...S.actionBtn,flex:1,background:"#fee2e2",color:"#ef4444",borderColor:"#fecaca"}} onClick={()=>setShowReject(r=>!r)}>❌ مرتجع</button>
                 </div>
                 {showReject&&(
