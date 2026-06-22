@@ -170,11 +170,12 @@ const ROLE_DESC = {
   admin:"وصول كامل + تعديل أي أوردر + الإعدادات",
 };
 const STATUS_MAP = {
-  pending:  {label:"في الانتظار",color:"#f59e0b",bg:"#fef3c7"},
-  confirmed:{label:"مؤكد",       color:"#3b82f6",bg:"#dbeafe"},
-  shipped:  {label:"تم الشحن",   color:"#8b5cf6",bg:"#ede9fe"},
-  delivered:{label:"مُسلَّم",    color:"#10b981",bg:"#d1fae5"},
-  rejected: {label:"مرتجع",      color:"#ef4444",bg:"#fee2e2"},
+  pending:   {label:"في الانتظار",color:"#f59e0b",bg:"#fef3c7"},
+  confirmed: {label:"مؤكد",       color:"#3b82f6",bg:"#dbeafe"},
+  shipped:   {label:"تم الشحن",   color:"#8b5cf6",bg:"#ede9fe"},
+  delivered: {label:"مُسلَّم",    color:"#10b981",bg:"#d1fae5"},
+  rejected:  {label:"مرتجع",      color:"#ef4444",bg:"#fee2e2"},
+  cancelled: {label:"ملغي",       color:"#6b7280",bg:"#f3f4f6"},
 };
 
 function genId(){return "HLM-"+Date.now().toString().slice(-6);}
@@ -775,7 +776,7 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
   const [filter,setFilter]=useState("all");
   const [myOrders,setMyOrders]=useState(false);
   const [search,setSearch]=useState("");
-  const [govFilter,setGovFilter]=useState("all");
+  const [govFilter,setGovFilter]=useState([]);
   const [salesFilter,setSalesFilter]=useState("all");
   const [dateFrom,setDateFrom]=useState("");
   const [dateTo,setDateTo]=useState("");
@@ -794,17 +795,22 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
     // Status filter
     if(filter!=="all"&&o.status!==filter)return false;
     // Governorate filter
-    if(govFilter!=="all"&&o.governorate!==govFilter)return false;
+    if(govFilter.length>0&&!govFilter.includes(o.governorate))return false;
     // Sales filter (admin only)
     if(isAdmin&&salesFilter!=="all"&&o.salesId!==parseInt(salesFilter))return false;
     // Date range
     if(dateFrom||dateTo){
       const parts=o.createdAt?.split("/");
-      if(parts&&parts.length===3){
-        const d=new Date(parts[2],parts[1]-1,parts[0]);
-        if(dateFrom&&d<new Date(dateFrom))return false;
-        if(dateTo&&d>new Date(dateTo))return false;
-      }
+      // Use _createdTs for accurate date filtering
+    if(o._createdTs){
+      const orderDate=new Date(o._createdTs).toISOString().slice(0,10);
+      if(dateFrom&&orderDate<dateFrom)return false;
+      if(dateTo&&orderDate>dateTo)return false;
+    } else if(parts&&parts.length===3){
+      const d=new Date(parts[2],parts[1]-1,parts[0]);
+      if(dateFrom&&d<new Date(dateFrom))return false;
+      if(dateTo&&d>new Date(dateTo))return false;
+    }
     }
     // Text search
     if(q){
@@ -846,7 +852,7 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
         </div>
         {/* Status pills */}
         <div style={{...S.filterRow,marginBottom:10}}>
-          {["all","pending","confirmed","shipped","delivered","rejected"].map(f=>(
+          {["all","pending","confirmed","shipped","delivered","rejected","cancelled"].map(f=>(
             <button key={f} style={{...S.filterBtn,...(filter===f?S.filterBtnActive:{})}} onClick={()=>setFilter(f)}>
               {f==="all"?"الكل":STATUS_MAP[f]?.label}
               <span style={S.filterCount}>{orders.filter(o=>f==="all"?true:o.status===f).length}</span>
@@ -867,10 +873,11 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
           <div style={{background:"#f8fafc",borderRadius:10,padding:14,marginTop:10,border:"0.5px solid #e2e8f0",display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:10}}>
             <div>
               <div style={S.subLabel}>المحافظة</div>
-              <select style={S.input} value={govFilter} onChange={e=>setGovFilter(e.target.value)}>
-                <option value="all">كل المحافظات</option>
-                {allGovs.map(g=><option key={g} value={g}>{g}</option>)}
+              <select style={S.input} value="" onChange={e=>{const v=e.target.value;if(!v)setGovFilter([]);else setGovFilter(p=>p.includes(v)?p.filter(x=>x!==v):[...p,v]);}}>
+                <option value="">📍 {govFilter.length===0?"كل المحافظات":govFilter.length+" محافظة"}</option>
+                {allGovs.map(g=><option key={g} value={g}>{govFilter.includes(g)?"✓ ":""}{g}</option>)}
               </select>
+              {govFilter.length>0&&<button onClick={()=>setGovFilter([])} style={{fontSize:11,color:"#ef4444",background:"none",border:"none",cursor:"pointer",marginTop:4}}>× مسح</button>}
             </div>
             {isAdmin&&(
               <div>
@@ -1084,6 +1091,10 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate,dbDeleteOrder}){
                 <div style={{background:"#f8fafc",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#64748b",marginBottom:10}}>شُحن مع: <strong>{order.shippingCompany}</strong></div>
                 <div style={{display:"flex",gap:8,marginBottom:8}}>
                   <button style={{...S.actionBtn,flex:1}} onClick={()=>auditUpdate({...order,status:"delivered",deliveredAt:today(),commission:order.orderType==="delivery"||!order.orderType?calcComm(calcTotal(order.items),order.commSettings&&order.commSettings.value>0?order.commSettings:commSettings):0},"تسجيل الاستلام")}>✅ تم الاستلام</button>
+                  <button style={{...S.actionBtn,flex:1,background:"#f3f4f6",color:"#6b7280",borderColor:"#e5e7eb"}} onClick={()=>{
+                    const reason=window.prompt("سبب الإلغاء:");
+                    if(reason!==null)auditUpdate({...order,status:"cancelled",cancelReason:reason},"إلغاء الطلب","السبب: "+reason);
+                  }}>🚫 إلغاء</button>
                   <button style={{...S.actionBtn,flex:1,background:"#fee2e2",color:"#ef4444",borderColor:"#fecaca"}} onClick={()=>setShowReject(r=>!r)}>❌ مرتجع</button>
                 </div>
                 {showReject&&(
@@ -1197,6 +1208,16 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate,dbDeleteOrder}){
                     <option value="delivery">📦 تسليم</option>
                     <option value="return">↩️ مرتجع</option>
                     <option value="exchange">🔄 تبديل</option>
+                  </select>
+                </Field>
+                <Field label="مصدر الأوردر">
+                  <select style={S.input} value={editForm.source||"phone"} onChange={e=>setEF("source",e.target.value)}>
+                    <option value="phone">📞 مكالمة</option>
+                    <option value="whatsapp">💬 واتساب</option>
+                    <option value="facebook">📘 فيسبوك</option>
+                    <option value="instagram">📸 انستجرام</option>
+                    <option value="tiktok">🎵 تيكتوك</option>
+                    <option value="website">🌐 الموقع</option>
                   </select>
                 </Field>
                 <Field label="نقل العمولة إلى"><select style={S.input} value={editForm.salesId} onChange={e=>setEF("salesId",parseInt(e.target.value))}>{salesUsers.map(u=><option key={u.id} value={u.id}>{u.name}{u.id===order.salesId?" (الحالي)":""}</option>)}</select></Field>
