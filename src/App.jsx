@@ -94,6 +94,9 @@ function dbToOrder(row, usersArr){
     createdAt: row.created_at||"",
     lastActionAt: row.last_action_at||0,
     _createdTs: row._created_ts||0,
+    source: row.source||"phone",
+    orderType: row.order_type||"delivery",
+    cancelReason: row.cancel_reason||"",
   };
 }
 
@@ -1603,15 +1606,25 @@ function CustomersPage({orders,users,setPage}){
 
 
 function Dashboard({orders,users,setOrders,dbUpdateOrder}){
+  const [dashFrom,setDashFrom]=useState("");
+  const [dashTo,setDashTo]=useState("");
+  
+  const dashOrders = (dashFrom||dashTo) ? orders.filter(o=>{
+    if(!o._createdTs) return true;
+    const d=new Date(o._createdTs).toISOString().slice(0,10);
+    if(dashFrom&&d<dashFrom)return false;
+    if(dashTo&&d>dashTo)return false;
+    return true;
+  }) : orders;
   const [activeTab,setActiveTab]=useState("overview");
   const [selectedSales,setSelectedSales]=useState("all");
-  const delivered=orders.filter(o=>o.status==="delivered");
-  const rejected=orders.filter(o=>o.status==="rejected");
+  const delivered=dashOrders.filter(o=>o.status==="delivered");
+  const rejected=dashOrders.filter(o=>o.status==="rejected");
   const totalSales=delivered.reduce((s,o)=>s+calcTotal(o.items),0);
   const paidComm=delivered.filter(o=>o.commPaid).reduce((s,o)=>s+o.commission,0);
   const unpaidComm=delivered.filter(o=>!o.commPaid).reduce((s,o)=>s+o.commission,0);
   const salesUsers=users.filter(u=>u.roles?.includes("sales"));
-  const userStats=salesUsers.map(u=>{const uo=orders.filter(o=>o.salesId===u.id);const ud=uo.filter(o=>o.status==="delivered");return{user:u,total:uo.length,delivered:ud.length,commission:ud.reduce((s,o)=>s+o.commission,0),paid:ud.filter(o=>o.commPaid).reduce((s,o)=>s+o.commission,0),unpaid:ud.filter(o=>!o.commPaid).reduce((s,o)=>s+o.commission,0)};});
+  const userStats=salesUsers.map(u=>{const uo=dashOrders.filter(o=>o.salesId===u.id);const ud=uo.filter(o=>o.status==="delivered");return{user:u,total:uo.length,delivered:ud.length,commission:ud.reduce((s,o)=>s+o.commission,0),paid:ud.filter(o=>o.commPaid).reduce((s,o)=>s+o.commission,0),unpaid:ud.filter(o=>!o.commPaid).reduce((s,o)=>s+o.commission,0)};});
   const reasons={};rejected.forEach(o=>{reasons[o.rejectReason]=(reasons[o.rejectReason]||0)+1;});
   const commOrders=delivered.filter(o=>selectedSales==="all"||o.salesId===parseInt(selectedSales));
   async function togglePaid(id){const o=orders.find(x=>x.id===id);if(!o)return;const updated={...o,commPaid:!o.commPaid};await dbUpdateOrder(updated);}
@@ -1624,9 +1637,25 @@ function Dashboard({orders,users,setOrders,dbUpdateOrder}){
   }
   return(
     <div style={S.pageWrap}>
-      <div style={S.pageHeader}><h1 style={S.pageTitle}>لوحة التحكم</h1></div>
+      <div style={{...S.pageHeader,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
+        <h1 style={{...S.pageTitle,marginBottom:0}}>لوحة التحكم</h1>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+          {[
+            {l:"اليوم",    f:()=>{const t=new Date().toISOString().slice(0,10);setDashFrom(t);setDashTo(t);}},
+            {l:"٧ أيام",  f:()=>{setDashFrom(new Date(Date.now()-7*86400000).toISOString().slice(0,10));setDashTo(new Date().toISOString().slice(0,10));}},
+            {l:"هذا الشهر",f:()=>{const n=new Date();setDashFrom(new Date(n.getFullYear(),n.getMonth(),1).toISOString().slice(0,10));setDashTo(n.toISOString().slice(0,10));}},
+            {l:"الشهر الماضي",f:()=>{const n=new Date();setDashFrom(new Date(n.getFullYear(),n.getMonth()-1,1).toISOString().slice(0,10));setDashTo(new Date(n.getFullYear(),n.getMonth(),0).toISOString().slice(0,10));}},
+            {l:"الكل",    f:()=>{setDashFrom("");setDashTo("");}},
+          ].map(p=>(
+            <button key={p.l} onClick={p.f} style={{...S.filterBtn,...(!dashFrom&&!dashTo&&p.l==="الكل"?S.filterBtnActive:dashFrom&&p.l!=="الكل"?{}:{})}}>{p.l}</button>
+          ))}
+          <input type="date" style={{...S.input,fontSize:11,padding:"4px 8px",width:"auto"}} value={dashFrom} onChange={e=>setDashFrom(e.target.value)}/>
+          <span style={{fontSize:11,color:"#94a3b8"}}>→</span>
+          <input type="date" style={{...S.input,fontSize:11,padding:"4px 8px",width:"auto"}} value={dashTo} onChange={e=>setDashTo(e.target.value)}/>
+        </div>
+      </div>
       <div style={S.metricsRow}>
-        <Metric label="إجمالي الطلبات" value={orders.length} icon="📋"/>
+        <Metric label="إجمالي الطلبات" value={dashOrders.length} icon="📋"/>
         <Metric label="مُسلَّم" value={delivered.length} icon="✅" color="#10b981"/>
         <Metric label="مرتجع" value={rejected.length} icon="↩️" color="#ef4444"/>
         <Metric label="إجمالي المبيعات" value={totalSales.toLocaleString()+" ج.م"} icon="💰" color="#3b82f6"/>
@@ -1691,7 +1720,7 @@ function Dashboard({orders,users,setOrders,dbUpdateOrder}){
           <div style={{overflowX:"auto"}}>
             <table style={{...S.table,width:"100%",minWidth:800}}>
               <thead><tr>{["رقم الطلب","العميل","المحافظة","المنتجات","الإجمالي","الحالة","المبيعات","الشحن","العمولة"].map(h=><th key={h} style={S.th}>{h}</th>)}</tr></thead>
-              <tbody>{orders.length===0?<tr><td colSpan={9} style={{...S.td,textAlign:"center",color:"#94a3b8"}}>لا توجد طلبات</td></tr>:orders.map(o=>{const st=STATUS_MAP[o.status];const su=users.find(u=>u.id===o.salesId);return(<tr key={o.id}><td style={S.td}><span style={S.orderId}>{o.id}</span></td><td style={S.td}>{o.customerName}</td><td style={S.td}>{o.governorate||"—"}</td><td style={S.td}><span style={{fontSize:11,color:"#64748b"}}>{o.items?.length||0} منتج</span></td><td style={S.td}>{calcTotal(o.items).toLocaleString()}</td><td style={S.td}><span style={{...S.statusBadge,color:st.color,background:st.bg}}>{st.label}</span></td><td style={S.td}>{su?.name||"—"}</td><td style={S.td}>{o.shippingCompany||"—"}</td><td style={{...S.td,color:"#10b981",fontWeight:600}}>{o.commission?Math.round(o.commission).toLocaleString()+" ج.م":"—"}</td></tr>);})}</tbody>
+              <tbody>{dashOrders.length===0?<tr><td colSpan={9} style={{...S.td,textAlign:"center",color:"#94a3b8"}}>لا توجد طلبات</td></tr>:orders.map(o=>{const st=STATUS_MAP[o.status];const su=users.find(u=>u.id===o.salesId);return(<tr key={o.id}><td style={S.td}><span style={S.orderId}>{o.id}</span></td><td style={S.td}>{o.customerName}</td><td style={S.td}>{o.governorate||"—"}</td><td style={S.td}><span style={{fontSize:11,color:"#64748b"}}>{o.items?.length||0} منتج</span></td><td style={S.td}>{calcTotal(o.items).toLocaleString()}</td><td style={S.td}><span style={{...S.statusBadge,color:st.color,background:st.bg}}>{st.label}</span></td><td style={S.td}>{su?.name||"—"}</td><td style={S.td}>{o.shippingCompany||"—"}</td><td style={{...S.td,color:"#10b981",fontWeight:600}}>{o.commission?Math.round(o.commission).toLocaleString()+" ج.م":"—"}</td></tr>);})}</tbody>
             </table>
           </div>
         </div>
@@ -1707,13 +1736,21 @@ function ActionBox({title,children}){return <div style={S.actionBox}><div style=
 function Metric({label,value,icon,color="#374151"}){return <div style={S.metricCard}><div style={S.metricIcon}>{icon}</div><div style={{...S.metricVal,color}}>{value}</div><div style={S.metricLabel}>{label}</div></div>;}
 
 function AnalyticsPage({orders}){
-  const [period,setPeriod]=useState("all"); // all | month | week | 3months
+  const [period,setPeriod]=useState("all");
+  const [customFrom,setCustomFrom]=useState("");
+  const [customTo,setCustomTo]=useState(""); // all | month | week | 3months
   
   // Filter by period
   const now=Date.now(), day=86400000;
   const periodMap={week:7*day,month:30*day,"3months":90*day};
-  const filteredOrders = period==="all" ? orders : orders.filter(o=>{
-    if(!o._createdTs) return true; // keep old orders without timestamp
+  const filteredOrders = (period==="custom"&&(customFrom||customTo)) ? orders.filter(o=>{
+    if(!o._createdTs) return true;
+    const d=new Date(o._createdTs).toISOString().slice(0,10);
+    if(customFrom&&d<customFrom)return false;
+    if(customTo&&d>customTo)return false;
+    return true;
+  }) : period==="all" ? orders : orders.filter(o=>{
+    if(!o._createdTs) return true;
     return (now-o._createdTs) <= periodMap[period];
   });
 
@@ -1770,10 +1807,13 @@ function AnalyticsPage({orders}){
     <div style={S.pageWrap}>
       <div style={{...S.pageHeader,display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:10}}>
         <h1 style={{...S.pageTitle,marginBottom:0}}>📈 تحليلات المبيعات</h1>
-        <div style={{display:"flex",gap:6}}>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
           {[{v:"all",l:"الكل"},{v:"week",l:"٧ أيام"},{v:"month",l:"شهر"},{v:"3months",l:"٣ أشهر"}].map(p=>(
-            <button key={p.v} style={{...S.filterBtn,...(period===p.v?S.filterBtnActive:{})}} onClick={()=>setPeriod(p.v)}>{p.l}</button>
+            <button key={p.v} style={{...S.filterBtn,...(period===p.v&&!customFrom?S.filterBtnActive:{})}} onClick={()=>{setPeriod(p.v);setCustomFrom("");setCustomTo("");}}>{p.l}</button>
           ))}
+          <input type="date" style={{...S.input,fontSize:11,padding:"4px 8px",width:"auto"}} value={customFrom} onChange={e=>{setCustomFrom(e.target.value);setPeriod("custom");}}/>
+          <span style={{fontSize:11,color:"#94a3b8"}}>→</span>
+          <input type="date" style={{...S.input,fontSize:11,padding:"4px 8px",width:"auto"}} value={customTo} onChange={e=>{setCustomTo(e.target.value);setPeriod("custom");}}/>
         </div>
       </div>
 
