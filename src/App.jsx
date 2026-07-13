@@ -826,7 +826,7 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
 
   const activeFilters=(govFilter!=="all"?1:0)+(salesFilter!=="all"?1:0)+(dateFrom||dateTo?1:0);
 
-  function clearAll(){setSearch("");setFilter("all");setGovFilter("all");setSalesFilter("all");setDateFrom("");setDateTo("");}
+  function clearAll(){setSearch("");setFilter("all");setGovFilter([]);setSalesFilter("all");setDateFrom("");setDateTo("");setMyOrders(false);}
 
   return(
     <div style={S.pageWrap}>
