@@ -1065,6 +1065,13 @@ function OrderModal({order,user,users,shipping,onClose,onUpdate,dbDeleteOrder}){
               {isAdmin&&<button style={{...S.tabBtn,...(tab==="audit"?S.tabBtnActive:{})}} onClick={()=>setTab("audit")}>🕐 سجل</button>}
             {isAdmin&&dbDeleteOrder&&<button onClick={async()=>{if(window.confirm("هتمسح الأوردر "+order.id+" نهائياً؟")){await dbDeleteOrder(order.id);onClose();}}} style={{...S.tabBtn,color:"#ef4444",borderColor:"#fecaca",background:"#fff5f5"}}>🗑️ مسح</button>}
             </div>
+            <button onClick={()=>{
+              const txt=`🛒 أوردر هولمن #${order.id}\n👤 ${order.customerName}\n📞 ${order.phone}\n📍 ${order.governorate||""}\n📦 ${(order.items||[]).map(i=>`${i.name} × ${i.qty}`).join(" | ")}\n💰 الإجمالي: ${calcTotal(order.items).toLocaleString()} ج.م\n📋 الحالة: ${STATUS_MAP[order.status]?.label||order.status}`;
+              if(navigator.share){navigator.share({title:"أوردر هولمن "+order.id,text:txt});}
+              else{navigator.clipboard?.writeText(txt);alert("تم نسخ بيانات الأوردر ✅");}
+            }} style={{background:"none",border:"1px solid #e2e8f0",borderRadius:6,color:"#64748b",fontSize:13,cursor:"pointer",padding:"3px 8px",lineHeight:1}} title="مشاركة">
+              🔗
+            </button>
             <button style={S.closeBtn} onClick={onClose}>✕</button>
           </div>
         </div>
