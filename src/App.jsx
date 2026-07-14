@@ -852,6 +852,10 @@ function OrdersPage({user,orders,setOrders,showToast,users,shipping,alerts=[],db
           <button style={{...S.filterBtn,...(myOrders?{background:"#0f2744",color:"#fff",borderColor:"#0f2744"}:{})}} onClick={()=>setMyOrders(p=>!p)}>
             👤 {myOrders?"طلباتي فقط ✓":"طلباتي فقط"}
           </button>
+          <button style={{...S.filterBtn,...(govFilter.length===2&&govFilter.includes("القاهرة")&&govFilter.includes("الجيزة")?{background:"#0f2744",color:"#fff",borderColor:"#0f2744"}:{})}}
+            onClick={()=>{const active=govFilter.length===2&&govFilter.includes("القاهرة")&&govFilter.includes("الجيزة");setGovFilter(active?[]:["القاهرة","الجيزة"]);}}>
+            📍 القاهرة والجيزة
+          </button>
         </div>
         {/* Status pills */}
         <div style={{fontSize:12,color:"#64748b",marginBottom:8,textAlign:"right"}}>
