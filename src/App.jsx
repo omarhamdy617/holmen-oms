@@ -235,6 +235,7 @@ export default function App(){
   const [toast,setToast]=useState(null);
   const [commSettings,setCommSettings]=useState({type:"percent",value:3});
   const [reminderSettings,setReminderSettings]=useState({pending:24,confirmed:12,shipped:48});
+  const [quoteSettings,setQuoteSettings]=useState({companyName:"",details:"",terms:"",validityDays:7,stamp:""});
   const [alerts,setAlerts]=useState([]);
   const [loading,setLoading]=useState(true);
   const [dbError,setDbError]=useState(null);
@@ -265,6 +266,8 @@ export default function App(){
         const rs=sets.find(x=>x.key==="reminder_settings");
         if(cs)setCommSettings(cs.value);
         if(rs)setReminderSettings(rs.value);
+        const qs=sets.find(x=>x.key==="quote_settings");
+        if(qs)setQuoteSettings(prev=>({...prev,...qs.value}));
         // Verify saved user still exists in DB
         if(currentUser){
           const stillExists=u.find(x=>x.id===currentUser.id&&x.username===currentUser.username);
@@ -426,8 +429,11 @@ export default function App(){
   }
 
   async function dbSaveSettings(key,value){
-    try{ await sb("settings?key=eq."+key,"PATCH",{value}); }
-    catch(e){ console.error("settings save error",e); }
+    try{
+      const r=await sb("settings?key=eq."+key,"PATCH",{value});
+      if(!r.length) await sb("settings","POST",{key,value});
+    }
+    catch(e){ console.error("settings save error",e); throw e; }
   }
 
   const [sidebarOpen,setSidebarOpen]=useState(false);
@@ -519,12 +525,13 @@ export default function App(){
       <main style={S.main}>
         {page==="orders"    &&<OrdersPage user={liveUser} orders={orders} setOrders={setOrders} showToast={showToast} users={users} shipping={shipping} alerts={alerts} dbUpdateOrder={dbUpdateOrder} setNotifications={setNotifications} notifications={notifications}/>}
         {page==="new-order" &&hasRole(liveUser,"sales")&&<NewOrderPage user={liveUser} orders={orders} setOrders={setOrders} showToast={showToast} setPage={setPage} products={products} commSettings={commSettings} dbAddOrder={dbAddOrder} setNotifications={setNotifications}/>}
+        {page==="quotes"    &&hasRole(liveUser,"sales")&&<QuotePage products={products} quoteSettings={quoteSettings} showToast={showToast}/>}
         {page==="dashboard" &&hasRole(liveUser,"admin")&&<Dashboard orders={orders} users={users} setOrders={setOrders} dbUpdateOrder={dbUpdateOrder} dbDeleteOrder={dbDeleteOrder}/>}
         {page==="users"     &&hasRole(liveUser,"admin")&&<UsersPage users={users} setUsers={setUsers} currentUser={liveUser} showToast={showToast} dbAddUser={dbAddUser} dbUpdateUser={dbUpdateUser} dbDeleteUser={dbDeleteUser}/>}
         {page==="customers" &&<CustomersPage orders={orders} users={users} setPage={setPage}/> }
         {page==="performance"&&hasRole(liveUser,"admin")&&<PerformancePage orders={orders} users={users}/> }
         {page==="analytics"   &&hasRole(liveUser,"admin")&&<AnalyticsPage orders={orders}/> }
-        {page==="settings"  &&hasRole(liveUser,"admin")&&<SettingsPage shipping={shipping} setShipping={setShipping} products={products} setProducts={setProducts} commSettings={commSettings} setCommSettings={setCommSettings} reminderSettings={reminderSettings} setReminderSettings={setReminderSettings} showToast={showToast} dbAddShipping={dbAddShipping} dbDeleteShipping={dbDeleteShipping} dbAddProduct={dbAddProduct} dbDeleteProduct={dbDeleteProduct} dbSaveSettings={dbSaveSettings}/>}
+        {page==="settings"  &&hasRole(liveUser,"admin")&&<SettingsPage shipping={shipping} setShipping={setShipping} products={products} setProducts={setProducts} commSettings={commSettings} setCommSettings={setCommSettings} reminderSettings={reminderSettings} setReminderSettings={setReminderSettings} quoteSettings={quoteSettings} setQuoteSettings={setQuoteSettings} showToast={showToast} dbAddShipping={dbAddShipping} dbDeleteShipping={dbDeleteShipping} dbAddProduct={dbAddProduct} dbDeleteProduct={dbDeleteProduct} dbSaveSettings={dbSaveSettings}/>}
       </main>
       {toast&&<div style={{...S.toast,background:toast.type==="success"?"#10b981":"#ef4444"}}>{toast.msg}</div>}
     </div>
@@ -552,6 +559,7 @@ function Sidebar({user,page,setPage,onLogout,alerts=[],isOpen,onClose,onBell,unr
   const nav=[
     {id:"orders",    label:"الطلبات",          icon:"📋",check:"any",alertCount:true},
     {id:"new-order", label:"طلب جديد",         icon:"➕",check:"sales"},
+    {id:"quotes",    label:"عروض الأسعار",     icon:"🧾",check:"sales"},
     {id:"dashboard", label:"لوحة التحكم",      icon:"📊",check:"admin"},
     {id:"users",     label:"المستخدمين",        icon:"👥",check:"admin"},
     {id:"customers", label:"العملاء",            icon:"👥",check:"any"},
@@ -598,7 +606,157 @@ function Sidebar({user,page,setPage,onLogout,alerts=[],isOpen,onClose,onBell,unr
 }
 
 
-function SettingsPage({shipping,setShipping,products,setProducts,commSettings,setCommSettings,reminderSettings,setReminderSettings,showToast,dbAddShipping,dbDeleteShipping,dbAddProduct,dbDeleteProduct,dbSaveSettings}){
+function escHtml(v){return String(v==null?"":v).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");}
+
+function resizeImageToDataUrl(file,maxSize=320){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onerror=()=>reject(new Error("تعذر قراءة الصورة"));
+    reader.onload=()=>{
+      const img=new Image();
+      img.onerror=()=>reject(new Error("الملف مش صورة صالحة"));
+      img.onload=()=>{
+        const k=Math.min(1,maxSize/Math.max(img.width,img.height));
+        const c=document.createElement("canvas");
+        c.width=Math.round(img.width*k);c.height=Math.round(img.height*k);
+        c.getContext("2d").drawImage(img,0,0,c.width,c.height);
+        resolve(c.toDataURL("image/png"));
+      };
+      img.src=reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function QuoteSettingsCard({quoteSettings,setQuoteSettings,dbSaveSettings,showToast}){
+  const [form,setForm]=useState(quoteSettings);
+  const [saving,setSaving]=useState(false);
+  useEffect(()=>{setForm(quoteSettings);},[quoteSettings]);
+  const upd=(k,v)=>setForm(p=>({...p,[k]:v}));
+  async function pickStamp(e){
+    const f=e.target.files&&e.target.files[0];
+    e.target.value="";
+    if(!f)return;
+    try{upd("stamp",await resizeImageToDataUrl(f));}catch(err){showToast(err.message,"error");}
+  }
+  async function save(){
+    setSaving(true);
+    try{
+      await dbSaveSettings("quote_settings",form);
+      setQuoteSettings(form);
+      showToast("تم حفظ بيانات عرض السعر ✅");
+    }catch(e){showToast("خطأ في الحفظ","error");}
+    setSaving(false);
+  }
+  return(
+    <div style={{...S.dashCard,marginBottom:16}}>
+      <div style={S.dashCardTitle}>🧾 بيانات عرض السعر والختم</div>
+      <div style={{fontSize:12,color:"#64748b",marginBottom:12}}>البيانات دي بتظهر في أعلى وأسفل كل عرض سعر بيتطبع</div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:12}}>
+        <div>
+          <div style={S.subLabel}>اسم الشركة</div>
+          <input style={S.input} value={form.companyName||""} onChange={e=>upd("companyName",e.target.value)} placeholder="مثال: هولمن للمضخات"/>
+          <div style={{...S.subLabel,marginTop:12}}>بيانات الشركة (عنوان، تليفونات، سجل تجاري، بطاقة ضريبية...)</div>
+          <textarea style={{...S.input,minHeight:100,resize:"vertical"}} value={form.details||""} onChange={e=>upd("details",e.target.value)} placeholder={"كل سطر هيظهر في سطر مستقل\nالعنوان: ...\nتليفون: ...\nسجل تجاري: ..."}/>
+          <div style={{...S.subLabel,marginTop:12}}>مدة صلاحية العرض (أيام)</div>
+          <input style={S.input} type="number" min="1" value={form.validityDays||7} onChange={e=>upd("validityDays",parseInt(e.target.value)||7)}/>
+        </div>
+        <div>
+          <div style={S.subLabel}>الشروط والأحكام (تظهر أسفل العرض)</div>
+          <textarea style={{...S.input,minHeight:100,resize:"vertical"}} value={form.terms||""} onChange={e=>upd("terms",e.target.value)} placeholder={"الأسعار شاملة/غير شاملة الضريبة\nشروط الدفع\nمدة التسليم\nالضمان"}/>
+          <div style={{...S.subLabel,marginTop:12}}>صورة الختم</div>
+          <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+            <div style={{width:110,height:110,border:"1px dashed #cbd5e1",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",background:"#f8fafc",overflow:"hidden"}}>
+              {form.stamp?<img src={form.stamp} alt="الختم" style={{maxWidth:"100%",maxHeight:"100%"}}/>:<span style={{fontSize:11,color:"#94a3b8"}}>لا يوجد ختم</span>}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:6}}>
+              <label style={{...S.iconBtn,textAlign:"center"}}>
+                📤 {form.stamp?"تغيير الختم":"رفع الختم"}
+                <input type="file" accept="image/*" onChange={pickStamp} style={{display:"none"}}/>
+              </label>
+              {form.stamp&&<button style={{...S.iconBtn,color:"#ef4444",borderColor:"#fecaca"}} onClick={()=>upd("stamp","")}>🗑️ حذف الختم</button>}
+              <div style={{fontSize:11,color:"#94a3b8",maxWidth:160}}>الأفضل PNG بخلفية شفافة</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button style={{...S.btn,width:"auto",padding:"10px 24px",marginTop:16}} disabled={saving} onClick={save}>{saving?"جاري الحفظ...":"💾 حفظ"}</button>
+    </div>
+  );
+}
+
+function QuotePage({products,quoteSettings,showToast}){
+  const emptyItem=()=>({name:"",qty:1,price:""});
+  const [customer,setCustomer]=useState({name:"",phone:"",address:""});
+  const [items,setItems]=useState([emptyItem()]);
+  const [discount,setDiscount]=useState("");
+  const [notes,setNotes]=useState("");
+  const [validity,setValidity]=useState(quoteSettings.validityDays||7);
+  useEffect(()=>{setValidity(quoteSettings.validityDays||7);},[quoteSettings.validityDays]);
+  const setItem=(i,k,v)=>setItems(p=>p.map((it,x)=>x===i?{...it,[k]:v}:it));
+  const subtotal=calcTotal(items);
+  const disc=Math.min(parseFloat(discount)||0,subtotal);
+  const total=subtotal-disc;
+
+  function printQuote(){
+    const valid=items.filter(i=>i.name.trim());
+    if(!customer.name.trim()){showToast("اكتب اسم العميل","error");return;}
+    if(valid.length===0){showToast("أضف منتج واحد على الأقل","error");return;}
+    const qs=quoteSettings;
+    const qNo="QT-"+Date.now().toString().slice(-6);
+    const d=new Date();
+    const until=new Date(d.getTime()+(parseInt(validity)||7)*86400000);
+    const fmt=x=>x.toLocaleDateString("ar-EG");
+    const lines=t=>escHtml(t).split("\n").filter(l=>l.trim()).map(l=>`<div>${l}</div>`).join("");
+    const rows=valid.map((it,i)=>{const q=parseInt(it.qty)||1,pr=parseFloat(it.price)||0;return `<tr><td>${i+1}</td><td>${escHtml(it.name)}</td><td style="text-align:center">${q}</td><td style="text-align:center">${pr.toLocaleString()}</td><td style="text-align:left">${(q*pr).toLocaleString()}</td></tr>`;}).join("");
+    const html=`<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="UTF-8"/><title>عرض سعر ${qNo}</title><link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet"><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:'Cairo','Segoe UI',Tahoma,Arial,sans-serif;background:#f8fafc;padding:24px;color:#1e293b}.page{background:#fff;max-width:760px;margin:0 auto;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,.1);overflow:hidden}.hdr{background:#0f2744;padding:22px 28px;color:#fff}.co{font-size:24px;font-weight:800}.det{font-size:12px;color:#cbd5e1;margin-top:6px;line-height:1.8}.body{padding:28px}.top{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:20px}.title{font-size:24px;font-weight:800;color:#0f2744}.meta{text-align:left;font-size:12px;color:#64748b;line-height:1.9}.meta b{color:#1e293b}.sec{font-size:11px;font-weight:700;color:#94a3b8;margin:18px 0 8px}.info{background:#f8fafc;border-radius:8px;padding:14px 16px;display:grid;grid-template-columns:1fr 1fr;gap:10px}.il{font-size:10px;color:#94a3b8}.iv{font-size:13px;font-weight:600}table{width:100%;border-collapse:collapse}th{background:#0f2744;color:#fff;padding:9px 12px;font-size:12px;text-align:right}th:last-child{text-align:left}td{padding:9px 12px;font-size:13px;border-bottom:1px solid #e2e8f0}.sum{margin-top:12px;margin-right:auto;width:280px;font-size:13px}.sum div{display:flex;justify-content:space-between;padding:6px 12px}.sum .t{background:#f0fdf4;border-top:2px solid #0f2744;font-size:16px;font-weight:800;color:#15803d}.terms{font-size:12px;color:#475569;line-height:1.9;margin-top:6px}.stampWrap{display:flex;justify-content:flex-start;margin-top:28px}.stampBox{text-align:center;font-size:11px;color:#94a3b8}.stampBox img{max-width:150px;max-height:150px;display:block;margin:0 auto 4px}.btn{display:block;margin:16px auto 0;padding:11px 28px;background:#0f2744;color:#fff;border:none;border-radius:8px;font-size:14px;cursor:pointer;font-family:inherit}@media print{body{padding:0;background:#fff}.page{box-shadow:none;max-width:100%;border-radius:0}.btn{display:none}.hdr,th,.sum .t{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body><div class="page"><div class="hdr"><div class="co">${escHtml(qs.companyName||"Holmen")}</div><div class="det">${lines(qs.details)}</div></div><div class="body"><div class="top"><div class="title">عرض سعر</div><div class="meta"><div>رقم العرض: <b>${qNo}</b></div><div>التاريخ: <b>${fmt(d)}</b></div><div>صالح حتى: <b>${fmt(until)}</b></div></div></div><div class="sec">بيانات العميل</div><div class="info"><div><div class="il">الاسم</div><div class="iv">${escHtml(customer.name)}</div></div><div><div class="il">التليفون</div><div class="iv">${escHtml(customer.phone)||"-"}</div></div>${customer.address.trim()?`<div style="grid-column:1/-1"><div class="il">العنوان</div><div class="iv">${escHtml(customer.address)}</div></div>`:""}</div><div class="sec">البنود</div><table><thead><tr><th>#</th><th>المنتج</th><th style="text-align:center">الكمية</th><th style="text-align:center">سعر الوحدة</th><th style="text-align:left">الإجمالي</th></tr></thead><tbody>${rows}</tbody></table><div class="sum"><div><span>الإجمالي الفرعي</span><span>${subtotal.toLocaleString()} ج.م</span></div>${disc>0?`<div><span>الخصم</span><span>- ${disc.toLocaleString()} ج.م</span></div>`:""}<div class="t"><span>الإجمالي</span><span>${total.toLocaleString()} ج.م</span></div></div>${notes.trim()?`<div class="sec">ملاحظات</div><div class="terms">${lines(notes)}</div>`:""}${(qs.terms||"").trim()?`<div class="sec">الشروط والأحكام</div><div class="terms">${lines(qs.terms)}</div>`:""}${qs.stamp?`<div class="stampWrap"><div class="stampBox"><img src="${qs.stamp}" alt=""/>الختم</div></div>`:""}</div></div><button class="btn" onclick="window.print()">🖨️ طباعة / حفظ PDF</button></body></html>`;
+    const w=window.open("","_blank");
+    if(!w){showToast("المتصفح منع النافذة — اسمح بالـ popups","error");return;}
+    w.document.write(html);w.document.close();
+  }
+
+  const lbl=S.subLabel;
+  return(
+    <div style={S.pageWrap}>
+      <div style={S.pageHeader}><h1 style={S.pageTitle}>🧾 عرض سعر</h1></div>
+      {!quoteSettings.companyName&&!quoteSettings.details&&<div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",fontSize:12,color:"#92400e",marginBottom:12}}>⚠️ بيانات الشركة والختم لسه متضافتش — الأدمن يضيفها من الإعدادات.</div>}
+      <div style={{maxWidth:900}}>
+        <div style={{...S.dashCard,marginBottom:16}}>
+          <div style={S.dashCardTitle}>بيانات العميل</div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(220px,1fr))",gap:12}}>
+            <div><div style={lbl}>الاسم *</div><input style={S.input} value={customer.name} onChange={e=>setCustomer(p=>({...p,name:e.target.value}))}/></div>
+            <div><div style={lbl}>التليفون</div><input style={S.input} value={customer.phone} onChange={e=>setCustomer(p=>({...p,phone:e.target.value}))}/></div>
+            <div style={{gridColumn:"1/-1"}}><div style={lbl}>العنوان</div><input style={S.input} value={customer.address} onChange={e=>setCustomer(p=>({...p,address:e.target.value}))}/></div>
+          </div>
+        </div>
+        <div style={{...S.dashCard,marginBottom:16}}>
+          <div style={S.dashCardTitle}>البنود</div>
+          <datalist id="quote-products">{products.map(p=><option key={p} value={p}/>)}</datalist>
+          {items.map((it,i)=>(
+            <div key={i} style={{display:"flex",gap:8,marginBottom:8,flexWrap:"wrap",alignItems:"center"}}>
+              <input style={{...S.input,flex:"2 1 200px"}} list="quote-products" placeholder="المنتج" value={it.name} onChange={e=>setItem(i,"name",e.target.value)}/>
+              <input style={{...S.input,flex:"0 0 80px"}} type="number" min="1" placeholder="الكمية" value={it.qty} onChange={e=>setItem(i,"qty",e.target.value)}/>
+              <input style={{...S.input,flex:"0 0 120px"}} type="number" min="0" placeholder="سعر الوحدة" value={it.price} onChange={e=>setItem(i,"price",e.target.value)}/>
+              <button style={{...S.iconBtn,color:"#ef4444",borderColor:"#fecaca"}} disabled={items.length===1} onClick={()=>setItems(p=>p.filter((_,x)=>x!==i))}>🗑️</button>
+            </div>
+          ))}
+          <button style={S.iconBtn} onClick={()=>setItems(p=>[...p,emptyItem()])}>+ إضافة بند</button>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))",gap:12,marginTop:16}}>
+            <div><div style={lbl}>الخصم (ج.م)</div><input style={S.input} type="number" min="0" value={discount} onChange={e=>setDiscount(e.target.value)}/></div>
+            <div><div style={lbl}>صلاحية العرض (أيام)</div><input style={S.input} type="number" min="1" value={validity} onChange={e=>setValidity(e.target.value)}/></div>
+          </div>
+          <div style={{marginTop:12}}><div style={lbl}>ملاحظات (اختياري)</div><textarea style={{...S.input,minHeight:70,resize:"vertical"}} value={notes} onChange={e=>setNotes(e.target.value)}/></div>
+          <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"10px 14px",fontSize:14,color:"#15803d",marginTop:14,fontWeight:700}}>
+            الإجمالي: {total.toLocaleString()} ج.م{disc>0&&<span style={{fontWeight:400,fontSize:12}}> (بعد خصم {disc.toLocaleString()})</span>}
+          </div>
+        </div>
+        <button style={{...S.btn,width:"auto",padding:"12px 28px"}} onClick={printQuote}>🖨️ معاينة وطباعة / PDF</button>
+      </div>
+    </div>
+  );
+}
+
+function SettingsPage({shipping,setShipping,products,setProducts,commSettings,setCommSettings,reminderSettings,setReminderSettings,quoteSettings,setQuoteSettings,showToast,dbAddShipping,dbDeleteShipping,dbAddProduct,dbDeleteProduct,dbSaveSettings}){
   const [shForm,setShForm]=useState({name:"",type:"company",phone:""});
   const [shErr,setShErr]=useState("");
   const [pForm,setPForm]=useState("");
@@ -657,6 +815,7 @@ function SettingsPage({shipping,setShipping,products,setProducts,commSettings,se
             </div>
           </div>
         </div>
+        <QuoteSettingsCard quoteSettings={quoteSettings} setQuoteSettings={setQuoteSettings} dbSaveSettings={dbSaveSettings} showToast={showToast}/>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(300px,1fr))",gap:16}}>
           <div style={S.dashCard}>
             <div style={S.dashCardTitle}>📦 إدارة المنتجات</div>
